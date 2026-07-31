@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #16233F;
+  --color-ink-soft: #3C4A66;
+  --color-paper: #F6F2E9;
+  --color-paper-dim: #EDE7D8;
+  --color-marigold: #DE9B2E;
+  --color-marigold-dim: #F1C77A;
+  --color-seal: #9C3B2C;
+  --color-verdict: #2B5233;
+  --color-line: #D8CEB8;
+
+  --font-display: 'Source Serif 4', serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+.seal {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid currentColor;
+  border-radius: 9999px;
+  transform: rotate(-4deg);
+  letter-spacing: 0.08em;
+}
+
+.case-number {
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+.font-display {
+  font-optical-sizing: none;
+  font-variation-settings: "opsz" 30;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

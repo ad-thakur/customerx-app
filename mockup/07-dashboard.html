@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My cases — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <nav class="main"><a href="#" class="active">My cases</a><a href="#">Documents</a><a href="#">Help</a></nav>
+    <span class="chip navy">ANANYA IYER</span>
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:44px;">
+  <div style="display:flex; justify-content:space-between; align-items:end; flex-wrap:wrap; gap:16px;">
+    <div>
+      <p class="eyebrow">Your dashboard</p>
+      <h1 class="display" style="font-size:34px;">Good afternoon, Ananya.</h1>
+    </div>
+    <a class="pill" href="02-intake.html">+ New complaint</a>
+  </div>
+
+  <div class="grid c3" style="margin-top:28px;">
+    <div class="card white" style="text-align:center;">
+      <p class="serif" style="font-size:30px; font-weight:700; color:var(--verdict);">₹13,238</p>
+      <p class="small muted">Recovered so far</p>
+    </div>
+    <div class="card white" style="text-align:center;">
+      <p class="serif" style="font-size:30px; font-weight:700;">2</p>
+      <p class="small muted">Active cases</p>
+    </div>
+    <div class="card white" style="text-align:center;">
+      <p class="serif" style="font-size:30px; font-weight:700;">2</p>
+      <p class="small muted">Resolved</p>
+    </div>
+  </div>
+
+  <h3 class="display" style="margin:36px 0 16px;">Active</h3>
+  <a href="08-tracking.html" class="card white" style="display:block; text-decoration:none; color:inherit; margin-bottom:14px; border-left:4px solid var(--marigold);">
+    <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <p class="mono small" style="color:var(--ink-soft);">CX-2026-00417 · Defective goods · Sec. 2(6)(a)</p>
+        <p class="serif" style="font-size:19px; font-weight:700; margin-top:4px;">Vayu Appliances — washing machine motor defect</p>
+        <p class="small muted" style="margin-top:4px;">Claim ₹26,799 · DCDRC Pune · Notice delivered, awaiting response</p>
+      </div>
+      <div style="text-align:right;">
+        <span class="chip gold">AWAITING RESPONSE</span>
+        <p class="small muted" style="margin-top:8px;"><b id="days-left">—</b> days left in response window</p>
+      </div>
+    </div>
+  </a>
+  <div class="card white" style="margin-bottom:14px; border-left:4px solid var(--seal);">
+    <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <p class="mono small" style="color:var(--ink-soft);">CX-2026-00298 · Misleading advertisement · Sec. 2(47)</p>
+        <p class="serif" style="font-size:19px; font-weight:700; margin-top:4px;">GlowDerm Naturals — "clinically proven" cream claims</p>
+        <p class="small muted" style="margin-top:4px;">Claim ₹12,400 · Notice ignored · Complaint filed at DCDRC Mumbai, first listing awaited</p>
+      </div>
+      <div style="text-align:right;"><span class="chip red">FILED AT COMMISSION</span></div>
+    </div>
+  </div>
+
+  <h3 class="display" style="margin:36px 0 16px;">Resolved</h3>
+  <div class="card" style="margin-bottom:14px; border-left:4px solid var(--verdict);">
+    <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <p class="mono small" style="color:var(--ink-soft);">CX-2025-04112 · Deficient service · Sec. 2(6)(b)</p>
+        <p class="serif" style="font-size:19px; font-weight:700; margin-top:4px;">BrightKart — paid order never delivered, refund stonewalled</p>
+        <p class="small muted" style="margin-top:4px;">Settled at notice stage in 19 days · Full refund ₹8,499 + ₹500 goodwill credit</p>
+      </div>
+      <div style="text-align:right;"><span class="chip green">RECOVERED ₹8,999</span></div>
+    </div>
+  </div>
+  <div class="card" style="border-left:4px solid var(--verdict);">
+    <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <p class="mono small" style="color:var(--ink-soft);">CX-2025-03761 · Overcharging · Sec. 2(6)(d)</p>
+        <p class="serif" style="font-size:19px; font-weight:700; margin-top:4px;">CineSnax Multiplex — water sold above MRP, repeatedly</p>
+        <p class="small muted" style="margin-top:4px;">Settled after notice · Refund with ₹4,000 compensation for the pattern of overcharging</p>
+      </div>
+      <div style="text-align:right;"><span class="chip green">RECOVERED ₹4,239</span></div>
+    </div>
+  </div>
+
+  <p class="demo-note">Illustrative demo — fictional data · Screen 7 of 9</p>
+</main>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="06-notice.html">←</a><a href="08-tracking.html">Next: Tracking →</a>
+</div>
+
+<script>
+// Notice sent 12 days ago in the demo timeline → 18 days remain.
+document.getElementById("days-left").textContent = 18;
+</script>
+</body>
+</html>
