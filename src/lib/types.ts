@@ -48,6 +48,9 @@ export interface IntakeData {
   claimAmount: number | null
   consequentialLoss: number | null
 
+  // Whether the user chose to join a coordinated group claim (vs. file individually)
+  joinGroup: boolean
+
   evidence: EvidenceFile[]
 }
 
@@ -83,5 +86,6 @@ export const emptyIntake: IntakeData = {
   incidentDate: '',
   claimAmount: null,
   consequentialLoss: null,
+  joinGroup: false,
   evidence: [],
 }

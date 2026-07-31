@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case CX-2026-00417 — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <nav class="main"><a href="07-dashboard.html">← My cases</a></nav>
+    <span class="chip gold">AWAITING RESPONSE</span>
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:44px;">
+  <p class="mono small" style="color:var(--ink-soft);">CX-2026-00417 · Defective goods · Sec. 2(6)(a) · DCDRC Pune</p>
+  <h1 class="display" style="font-size:34px; margin-top:6px;">Vayu Appliances — washing machine motor defect</h1>
+
+  <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:24px; margin-top:30px; align-items:start;">
+    <div>
+      <div class="card white" style="margin-bottom:18px;">
+        <h3 class="display" style="margin-bottom:20px;">Case timeline</h3>
+        <ul class="timeline">
+          <li class="done"><span class="knot"></span>
+            <p class="when" id="t1"></p><p class="what">Complaint filed on Consumer X</p>
+            <p class="note">Eligibility confirmed: DCDRC Pune, nil court fee, evidence score 65/100.</p>
+          </li>
+          <li class="done"><span class="knot"></span>
+            <p class="when" id="t2"></p><p class="what">Recovery assessment purchased — ₹499</p>
+            <p class="note">Band: Strong. Range ₹22,000–₹31,500. Recommended: notice first.</p>
+          </li>
+          <li class="done"><span class="knot"></span>
+            <p class="when" id="t3"></p><p class="what">Notice sent — email + registered post</p>
+            <p class="note">REF/CX/2026/00417 · Registered post RN728841955IN.</p>
+          </li>
+          <li class="done"><span class="knot"></span>
+            <p class="when" id="t4"></p><p class="what">Email delivered · post acknowledged</p>
+            <p class="note">Delivery receipt preserved — becomes Annexure C if we file.</p>
+          </li>
+          <li class="done"><span class="knot"></span>
+            <p class="when" id="t5"></p><p class="what">Company opened the notice</p>
+            <p class="note">Read receipt on grievance mailbox · legal@vayuappliances.in</p>
+          </li>
+          <li class="current"><span class="knot"></span>
+            <p class="when">Now</p><p class="what">Awaiting response</p>
+            <p class="note">If the window closes silently, your filing packet is already 80% assembled.</p>
+          </li>
+        </ul>
+      </div>
+
+      <div class="card" style="border-color:rgba(43,82,51,0.45); background:rgba(43,82,51,0.06);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <p class="small" style="font-weight:700; color:var(--verdict);">NEW — Vayu Appliances has responded</p>
+            <p class="small muted" style="margin-top:4px;">Received today, 11:42 — an offer to settle. Review it before the window closes.</p>
+          </div>
+          <a class="pill" style="background:var(--verdict);" href="09-resolution.html">Review their offer →</a>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card white" style="text-align:center; margin-bottom:18px;">
+        <p class="small muted" style="margin-bottom:12px;">Response window</p>
+        <div style="position:relative; width:150px; height:150px; margin:0 auto;">
+          <svg class="ring" width="150" height="150" viewBox="0 0 120 120">
+            <circle class="bg" cx="60" cy="60" r="52" fill="none" stroke-width="10"/>
+            <circle class="fg" cx="60" cy="60" r="52" fill="none" stroke-width="10"
+                    stroke-dasharray="326.7" stroke-dashoffset="130.7"/>
+          </svg>
+          <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+            <p class="serif" style="font-size:32px; font-weight:700; line-height:1;">18</p>
+            <p class="small muted" style="font-size:11.5px;">days left of 30</p>
+          </div>
+        </div>
+        <p class="small muted" style="border-top:1px solid var(--line); padding-top:12px; margin-top:14px;">Response due <b id="due"></b></p>
+      </div>
+
+      <div class="card white" style="margin-bottom:18px;">
+        <h3 class="display" style="font-size:17px; margin-bottom:12px;">Case file</h3>
+        <p class="small" style="padding:7px 0; border-bottom:1px solid var(--line);">📄 Notice of Deficiency (sent)</p>
+        <p class="small" style="padding:7px 0; border-bottom:1px solid var(--line);">📄 Recovery assessment report</p>
+        <p class="small" style="padding:7px 0; border-bottom:1px solid var(--line);">📎 invoice-vayu-2201.pdf</p>
+        <p class="small" style="padding:7px 0; border-bottom:1px solid var(--line);">📎 drum-fault-video.mp4</p>
+        <p class="small" style="padding:7px 0;">📎 emails-with-support.pdf</p>
+      </div>
+
+      <div class="card navy">
+        <h3 class="display" style="font-size:17px; margin-bottom:8px;">If they stay silent</h3>
+        <p class="small" style="color:rgba(246,242,233,0.75); margin-bottom:14px;">On day 30 we assemble your DCDRC filing with an empanelled advocate — one fixed fee of ₹5,500, no surprises, no cut of your recovery.</p>
+        <a class="pill ghost" href="individual-pursuit.html" style="border-color:rgba(246,242,233,0.4); color:var(--paper); width:100%; display:block; text-align:center;">Pursue to filing — ₹5,500</a>
+      </div>
+    </div>
+  </div>
+
+  <p class="demo-note">Illustrative demo — fictional data · Screen 8 of 9</p>
+</main>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="07-dashboard.html">←</a><a href="09-resolution.html">Next: Resolution →</a>
+</div>
+
+<script>
+const fmt = d => d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return fmt(d); };
+document.getElementById("t1").textContent = ago(16);
+document.getElementById("t2").textContent = ago(15);
+document.getElementById("t3").textContent = ago(12);
+document.getElementById("t4").textContent = ago(11);
+document.getElementById("t5").textContent = ago(9);
+const due = new Date(); due.setDate(due.getDate() + 18);
+document.getElementById("due").textContent = due.toLocaleDateString("en-IN", { day: "numeric", month: "long" });
+</script>
+</body>
+</html>

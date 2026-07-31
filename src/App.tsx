@@ -11,6 +11,9 @@ import Notice from './pages/Notice'
 import Dashboard from './pages/Dashboard'
 import CaseTracking from './pages/CaseTracking'
 import Resolution from './pages/Resolution'
+import ClaimAggregation from './pages/ClaimAggregation'
+import JoinClaim from './pages/JoinClaim'
+import IndividualPursuit from './pages/IndividualPursuit'
 
 export default function App() {
   return (
@@ -20,8 +23,11 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
+          <Route path="/claim-aggregation" element={<ClaimAggregation />} />
           <Route path="/file" element={<File />} />
           <Route path="/result" element={<Result />} />
+          <Route path="/join-claim" element={<JoinClaim />} />
+          <Route path="/individual-pursuit" element={<IndividualPursuit />} />
           <Route path="/pay/:id" element={<Payment />} />
           <Route path="/report/:id" element={<Report />} />
           <Route path="/notice/:id" element={<Notice />} />

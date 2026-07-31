@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Start a claim — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <span class="chip">DRAFT IN PROGRESS</span>
+  </div>
+</header>
+
+<main class="wrap-narrow" style="padding-top:34px;">
+  <div class="steps">
+    <span class="step" id="si1"><span class="dot">1</span> Issue</span><span class="rule step"></span>
+    <span class="step" id="si2"><span class="dot">2</span> Details</span><span class="rule step"></span>
+    <span class="step" id="si3"><span class="dot">3</span> Evidence</span><span class="rule step"></span>
+    <span class="step" id="si4"><span class="dot">4</span> Review</span>
+  </div>
+
+  <!-- STEP 1 — issue + company -->
+  <section id="step1">
+    <h2 class="display">What went wrong, and who with?</h2>
+    <p class="muted" style="margin:8px 0 26px;">Two quick questions. That's all we need to find your footing — and anyone else in the same boat.</p>
+
+    <p class="eyebrow">The problem</p>
+    <div class="grid c2" id="grounds" style="margin-bottom:26px;"></div>
+
+    <div class="fgroup">
+      <label class="field">Which company or seller?</label>
+      <input type="text" id="f_company" placeholder="e.g. Vayu Appliances" oninput="checkContinue()">
+      <p class="fhint">Start typing — we'll check if others have already claimed against them.</p>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;">
+      <button class="pill ghost" onclick="sampleFill()">Use sample case</button>
+      <button class="pill" id="c1" disabled onclick="afterStep1()">Continue</button>
+    </div>
+  </section>
+
+  <!-- INTERSTITIAL — the aggregation pause -->
+  <section id="interstitial" hidden>
+    <!-- group found -->
+    <div id="group-found" hidden>
+      <p class="eyebrow" style="color:var(--seal);">Hold on — you're not alone</p>
+      <h2 class="display" id="gf-title">126 people already have a claim against this company.</h2>
+      <p class="muted" style="margin:10px 0 24px;">For the same kind of problem. You can file alongside them — one coordinated notice, one combined number the company has to answer — or go it alone. Either way you still get your own free assessment.</p>
+
+      <div class="card white" style="border-left:4px solid var(--marigold); margin-bottom:24px;">
+        <span class="chip navy">GROUP CLAIM · GC-2026-0043</span>
+        <span class="chip gold" style="margin-left:6px;" id="gf-status">COORDINATED NOTICE SENT</span>
+        <h3 class="display" style="font-size:20px; margin:12px 0 4px;" id="gf-company">Vayu Appliances</h3>
+        <p class="small muted" id="gf-issue">Defective goods · Sec. 2(6)(a) · motor defect within warranty</p>
+        <div style="display:flex; gap:28px; margin-top:16px;">
+          <div><p class="serif" style="font-size:24px; font-weight:700; line-height:1;" id="gf-count">126</p><p class="small muted">claimants</p></div>
+          <div><p class="serif" style="font-size:24px; font-weight:700; line-height:1;" id="gf-value">₹34.2L</p><p class="small muted">combined claim value</p></div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:14px; flex-wrap:wrap;">
+        <button class="pill seal" onclick="join(true)">Join this group claim →</button>
+        <button class="pill ghost" onclick="join(false)">File on my own instead</button>
+      </div>
+    </div>
+
+    <!-- no group -->
+    <div id="group-none" hidden>
+      <p class="eyebrow">You could be the first</p>
+      <h2 class="display" id="gn-title">No active group claim against them yet.</h2>
+      <p class="muted" style="margin:10px 0 24px;">That's fine — file your claim, and anyone wronged the same way can join you. Group claims start with one person deciding to act.</p>
+      <div style="display:flex; gap:14px;">
+        <button class="pill" onclick="join(false)">Continue with my claim →</button>
+        <button class="pill ghost" onclick="backToStep1()">← Change company</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2 — trimmed details -->
+  <section id="step2" hidden>
+    <h2 class="display">A few details</h2>
+    <p class="muted" style="margin:8px 0 26px;">Just the essentials. Everything here goes straight into your notice.</p>
+    <div class="grid c2">
+      <div class="fgroup"><label class="field">Full name</label><input type="text" id="f_name" placeholder="As it should appear on the notice"></div>
+      <div class="fgroup"><label class="field">Phone number</label><input type="tel" id="f_phone" placeholder="10-digit mobile"></div>
+      <div class="fgroup"><label class="field">Email</label><input type="email" id="f_email"></div>
+      <div class="fgroup"><label class="field">Amount paid / claimed (₹)</label><input type="number" id="f_amount" placeholder="e.g. 24999"></div>
+      <div class="fgroup"><label class="field">When did the problem happen?</label><input type="date" id="f_incident"><p class="fhint">Your 2-year filing window is counted from here.</p></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:14px;">
+      <button class="pill ghost" onclick="show('interstitial')">← Back</button>
+      <button class="pill" onclick="show('step3', 3)">Continue</button>
+    </div>
+  </section>
+
+  <!-- STEP 3 — narrative + evidence -->
+  <section id="step3" hidden>
+    <h2 class="display">What happened, in your words</h2>
+    <p class="muted" style="margin:8px 0 26px;">A few lines and any proof you have. The stronger the file, the stronger the claim — yours and the group's.</p>
+    <div class="fgroup">
+      <label class="field">Your account of events</label>
+      <textarea id="f_narrative" rows="4" placeholder="What did you buy, what went wrong, and what have you asked the company to do about it?"></textarea>
+    </div>
+    <div class="fgroup">
+      <label class="field">Evidence <span class="muted" style="font-weight:400;">(optional, but it helps)</span></label>
+      <div id="dropzone" style="border:1.5px dashed var(--line); border-radius:10px; padding:30px; text-align:center; cursor:pointer;" onclick="addFile()">
+        <p style="font-weight:600;">Drop files here, or click to upload</p>
+        <p class="small muted">Invoices, photos, screenshots, warranty cards</p>
+      </div>
+      <div id="files" style="margin-top:12px; display:grid; gap:8px;"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:14px;">
+      <button class="pill ghost" onclick="show('step2', 2)">← Back</button>
+      <button class="pill" onclick="show('step4', 4)">Continue</button>
+    </div>
+  </section>
+
+  <!-- STEP 4 — review -->
+  <section id="step4" hidden>
+    <h2 class="display">Review your claim</h2>
+    <p class="muted" style="margin:8px 0 26px;">Check it over before we assess it.</p>
+    <div class="card white" id="review"></div>
+    <div style="display:flex; justify-content:space-between; margin-top:26px;">
+      <button class="pill ghost" onclick="show('step3', 3)">← Back</button>
+      <a class="pill" href="03-eligibility.html">See my Commission &amp; eligibility</a>
+    </div>
+  </section>
+
+  <p class="demo-note">Illustrative demo — fictional data · Screen 2 of 10</p>
+</main>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="01-landing.html">←</a><a href="claim-aggregation.html">Claim aggregation →</a><a href="03-eligibility.html">Eligibility →</a>
+</div>
+
+<script>
+const GROUNDS = [
+  ["Sec. 2(6)(a)", "Defective goods", "Faulty, broken, or doesn't work as it should."],
+  ["Sec. 2(6)(b)", "Deficient service", "Incomplete, delayed, or below what was promised."],
+  ["Sec. 2(6)(c)", "Unfair trade practice", "Misrepresentation or deceptive tactics."],
+  ["Sec. 2(6)(d)", "Overcharging", "Charged more than displayed, agreed, or legal."],
+  ["Sec. 2(6)(e)", "Spurious goods", "Fake, counterfeit, or not as represented."],
+  ["Sec. 2(6)(f)", "Hazardous goods", "Unsafe or non-compliant, sold knowingly."],
+  ["Sec. 2(6)(g)", "Misleading advertisement", "False or misleading claims that influenced you."],
+];
+let selected = null;
+let joined = false;
+
+const groundsEl = document.getElementById("grounds");
+GROUNDS.forEach(([sec, t, d], i) => {
+  const b = document.createElement("button");
+  b.className = "ground";
+  b.innerHTML = `<p class="sec">${sec}</p><p class="t">${t}</p><p class="d">${d}</p>`;
+  b.onclick = () => {
+    selected = i;
+    document.querySelectorAll(".ground").forEach(g => g.classList.remove("selected"));
+    b.classList.add("selected");
+    checkContinue();
+  };
+  groundsEl.appendChild(b);
+});
+
+const V = id => document.getElementById(id).value;
+function checkContinue() {
+  document.getElementById("c1").disabled = !(selected !== null && V("f_company").trim().length > 1);
+}
+
+// Known group claims (demo). Match on company name substring.
+const GROUPS = {
+  vayu: { company: "Vayu Appliances", issue: "Defective goods · Sec. 2(6)(a) · motor defect within warranty", count: 126, value: "₹34.2L", status: "COORDINATED NOTICE SENT" },
+  brightkart: { company: "BrightKart", issue: "Deficient service · Sec. 2(6)(b) · paid orders never delivered", count: 312, value: "₹18.7L", status: "IN SETTLEMENT TALKS" },
+  nimbus: { company: "Nimbus Broadband", issue: "Overcharging · Sec. 2(6)(d) · charged for speeds never delivered", count: 540, value: "₹27.5L", status: "IN SETTLEMENT TALKS" },
+  zephyr: { company: "Zephyr Mobiles", issue: "Hazardous goods · Sec. 2(6)(f) · Z9 Pro overheating", count: 74, value: "₹22.1L", status: "COLLECTING CLAIMS" },
+  glowderm: { company: "GlowDerm Naturals", issue: "Misleading advertisement · Sec. 2(47)", count: 208, value: "₹9.4L", status: "COLLECTING CLAIMS" },
+};
+function matchGroup(name) {
+  const n = name.toLowerCase();
+  for (const key in GROUPS) if (n.includes(key)) return GROUPS[key];
+  return null;
+}
+
+function show(id, stepNum) {
+  ["step1", "interstitial", "step2", "step3", "step4"].forEach(s => document.getElementById(s).hidden = s !== id);
+  if (stepNum) for (let i = 1; i <= 4; i++) {
+    const si = document.getElementById("si" + i);
+    si.classList.toggle("active", i === stepNum);
+    si.classList.toggle("done", i < stepNum);
+  }
+  if (id === "step4") buildReview();
+  window.scrollTo(0, 0);
+}
+
+function afterStep1() {
+  const g = matchGroup(V("f_company"));
+  document.getElementById("interstitial").hidden = false;
+  document.getElementById("step1").hidden = true;
+  document.getElementById("group-found").hidden = !g;
+  document.getElementById("group-none").hidden = !!g;
+  if (g) {
+    document.getElementById("gf-title").textContent = `${g.count} people already have a claim against ${g.company}.`;
+    document.getElementById("gf-company").textContent = g.company;
+    document.getElementById("gf-issue").textContent = g.issue;
+    document.getElementById("gf-count").textContent = g.count;
+    document.getElementById("gf-value").textContent = g.value;
+    document.getElementById("gf-status").textContent = g.status;
+  } else {
+    document.getElementById("gn-title").textContent = `No active group claim against ${V("f_company")} yet.`;
+  }
+  window.scrollTo(0, 0);
+}
+
+function backToStep1() { show("step1", 1); }
+
+function join(isGroup) {
+  joined = isGroup;
+  show("step2", 2);
+}
+
+function buildReview() {
+  const g = matchGroup(V("f_company"));
+  const claimType = joined
+    ? `<span class="chip gold">GROUP CLAIM · joining ${g ? g.count : ""} others</span>`
+    : `<span class="chip navy">INDIVIDUAL CLAIM</span>`;
+  const rows = [
+    ["How you're filing", claimType],
+    ["Issue", selected !== null ? `${GROUNDS[selected][1]} (${GROUNDS[selected][0]})` : "—"],
+    ["Company", V("f_company") || "—"],
+    ["Claimant", V("f_name") || "—"],
+    ["Amount claimed", V("f_amount") ? "₹" + Number(V("f_amount")).toLocaleString("en-IN") : "—"],
+    ["When it happened", V("f_incident") || "—"],
+    ["Evidence attached", document.querySelectorAll("#files > div").length + " file(s)"],
+  ];
+  document.getElementById("review").innerHTML = rows.map(([k, v]) =>
+    `<div style="display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--line);">
+       <span class="muted">${k}</span><span style="font-weight:600; text-align:right;">${v}</span></div>`).join("");
+}
+
+const SAMPLE_FILES = ["invoice-vayu-2201.pdf · Invoice", "drum-fault-video.mp4 · Photo/video", "emails-with-support.pdf · Correspondence"];
+let fileCount = 0;
+function addFile() {
+  if (fileCount >= SAMPLE_FILES.length) return;
+  const d = document.createElement("div");
+  d.className = "card"; d.style.padding = "10px 16px"; d.style.fontSize = "14px";
+  d.innerHTML = `📎 ${SAMPLE_FILES[fileCount++]}`;
+  document.getElementById("files").appendChild(d);
+}
+
+function sampleFill() {
+  document.querySelectorAll(".ground")[0].click();
+  document.getElementById("f_company").value = "Vayu Appliances Pvt. Ltd.";
+  const set = (id, v) => document.getElementById(id).value = v;
+  set("f_name", "Ananya Iyer"); set("f_phone", "9812045673"); set("f_email", "ananya.iyer@example.in");
+  set("f_amount", 24999);
+  const inc = new Date(); inc.setDate(inc.getDate() - 140);
+  set("f_incident", inc.toISOString().slice(0, 10));
+  set("f_narrative", "I bought a Vayu 8kg front-load washing machine for ₹24,999. Within three weeks the drum began seizing mid-cycle. Vayu's service centre acknowledged a motor defect in writing but has refused a replacement or refund for over four months.");
+  addFile(); addFile(); addFile();
+  checkContinue();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settlement offer — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <nav class="main"><a href="08-tracking.html">← Case CX-2026-00417</a></nav>
+    <span class="chip green">OFFER RECEIVED</span>
+  </div>
+</header>
+
+<main class="wrap-narrow" style="padding-top:44px;">
+  <div id="offer-view">
+    <p class="eyebrow">Settlement offer · day 12 of 30</p>
+    <h1 class="display" style="font-size:34px;">Vayu Appliances wants to settle.</h1>
+    <p class="muted" style="margin:10px 0 30px;">Their legal team responded to your notice. Here's the offer, measured against what your assessment said a Commission would likely award.</p>
+
+    <div class="card white" style="margin-bottom:18px;">
+      <p class="small muted" style="margin-bottom:14px;">From legal@vayuappliances.in · today, 11:42</p>
+      <div style="border-left:3px solid var(--line); padding-left:18px; font-family:var(--serif); font-size:15.5px; line-height:1.7;">
+        <p>"Without admission of liability, and in the interest of an amicable resolution, our client is willing to refund the full purchase consideration of <b>₹24,999</b> and additionally credit <b>₹2,000</b> towards the inconvenience caused, subject to withdrawal of the contemplated proceedings…"</p>
+      </div>
+      <div class="grid c3" style="margin-top:20px;">
+        <div style="text-align:center;"><p class="small muted">Their offer</p><p class="serif" style="font-size:24px; font-weight:700;">₹26,999</p></div>
+        <div style="text-align:center;"><p class="small muted">Your claim</p><p class="serif" style="font-size:24px; font-weight:700;">₹24,999</p></div>
+        <div style="text-align:center;"><p class="small muted">Assessment range</p><p class="serif" style="font-size:24px; font-weight:700;">₹22,000–31,500</p></div>
+      </div>
+      <div class="card" style="margin-top:18px; padding:14px 18px; background:rgba(43,82,51,0.06); border-color:rgba(43,82,51,0.4);">
+        <p class="small"><b style="color:var(--verdict);">Our read:</b> the offer covers 100% of your claim and sits inside the realistic range — above what depreciation-adjusted refunds typically land at. Accepting now beats a likely 12–18 month wait at the Commission for a similar number.</p>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:14px; justify-content:center; margin:26px 0;">
+      <button class="pill ghost" onclick="alert('In the live product this opens a counter-offer / decline flow, with the filing path as leverage.')">Decline / counter</button>
+      <button class="pill" style="background:var(--verdict);" onclick="accept()">Accept — settle for ₹26,999</button>
+    </div>
+  </div>
+
+  <div id="done-view" hidden>
+    <div style="text-align:center; padding:30px 0 10px;">
+      <div style="width:64px; height:64px; border-radius:999px; background:var(--verdict); color:#fff; font-size:30px; display:flex; align-items:center; justify-content:center; margin:0 auto 18px;">✓</div>
+      <p class="eyebrow" style="color:var(--verdict);">Case resolved · 12 days after notice</p>
+      <h1 class="display" style="font-size:36px;">₹26,999 recovered.</h1>
+      <p class="muted" style="max-width:460px; margin:14px auto 0;">Settlement recorded in your case file. Vayu has 7 days to transfer the amount — we track that too, and reopen the case if it doesn't arrive.</p>
+    </div>
+
+    <div class="grid c3" style="margin-top:30px;">
+      <div class="card white" style="text-align:center;"><p class="serif" style="font-size:24px; font-weight:700;">12 days</p><p class="small muted">Notice to resolution</p></div>
+      <div class="card white" style="text-align:center;"><p class="serif" style="font-size:24px; font-weight:700;">₹499</p><p class="small muted">Your total cost</p></div>
+      <div class="card white" style="text-align:center;"><p class="serif" style="font-size:24px; font-weight:700;">54×</p><p class="small muted">Recovered vs spent</p></div>
+    </div>
+
+    <div class="card navy" style="margin-top:26px; text-align:center;">
+      <h3 class="display" style="margin-bottom:6px;">Your case just made the next person's fight shorter.</h3>
+      <p class="small" style="color:rgba(246,242,233,0.75); max-width:480px; margin:0 auto 18px;">With your consent, this outcome joins the public ledger — so the next Vayu customer knows the pattern, and Vayu knows they know.</p>
+      <div style="display:flex; gap:12px; justify-content:center;">
+        <button class="pill" style="background:var(--paper); color:var(--ink);" onclick="this.textContent='Added to the public ledger ✓'; this.disabled=true;">Add my outcome (anonymised)</button>
+        <a class="pill ghost" style="border-color:rgba(246,242,233,0.4); color:var(--paper);" href="07-dashboard.html">Back to my cases</a>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:26px;">
+      <h3 class="display" style="font-size:17px; margin-bottom:8px;">And if they had stayed silent?</h3>
+      <p class="small muted">Day 30 unlocks assisted filing: your packet — notice, delivery proof, evidence, precedents — is assembled for DCDRC Pune with an empanelled advocate, for one fixed fee. The credible threat is what makes settlements like this one happen in 12 days.</p>
+    </div>
+  </div>
+
+  <p class="demo-note">Illustrative demo — fictional data · Screen 9 of 9 · <a href="index.html" style="color:inherit;">Back to demo hub</a></p>
+</main>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="08-tracking.html">←</a><a href="index.html">Finish ⏎</a>
+</div>
+
+<script>
+function accept() {
+  document.getElementById("offer-view").hidden = true;
+  document.getElementById("done-view").hidden = false;
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>
