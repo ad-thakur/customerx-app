@@ -12,7 +12,7 @@ import {
   toView,
 } from './caseLogic.js'
 import { generateAiAssessment } from './ai.js'
-import { searchPrecedents } from './precedents.js'
+import { initPrecedentTable, searchLocalPrecedents } from './precedentStore.js'
 import type { CaseRecord, IntakeData, RoutingResult } from './types.js'
 
 const app = express()
@@ -106,9 +106,9 @@ app.post('/api/cases/:id/pay', async (req, res) => {
 
     // Retrieve precedents on the statutory ground only (never the narrative
     // verbatim to a third party), then let the AI layer rank/annotate them.
-    let precedents: Awaited<ReturnType<typeof searchPrecedents>> = []
+    let precedents: Awaited<ReturnType<typeof localPrecedentResults>> = []
     try {
-      precedents = await searchPrecedents(
+      precedents = await localPrecedentResults(
         `${record.intake.ground?.replace(/_/g, ' ')} consumer protection act 2019`,
       )
     } catch {
@@ -218,6 +218,25 @@ app.post('/api/cases/:id/ledger', async (req, res) => {
   }
 })
 
+// Precedents come from the locally ingested e-Jagriti corpus (precedent_cases
+// table, populated by src/ingest.ts) — shaped to the PrecedentResult contract
+// the frontend and ai.ts already expect.
+async function localPrecedentResults(query: string) {
+  const rows = await searchLocalPrecedents(query, 5)
+  return rows.map((r) => {
+    const date =
+      r.judgmentDate instanceof Date
+        ? r.judgmentDate.toISOString().slice(0, 10)
+        : (r.judgmentDate ?? null)
+    return {
+      title: `${r.caseNumber} — ${r.complainant ?? 'Complainant'} v. ${r.respondent ?? 'Respondent'}`,
+      docUrl: `https://e-jagriti.gov.in/judgement#${encodeURIComponent(r.caseNumber)}`,
+      court: ['NCDRC', r.outcome, date].filter(Boolean).join(' · '),
+      snippet: r.snippet.replace(/<\/?b>/g, ''),
+    }
+  })
+}
+
 app.get('/api/precedents', async (req, res) => {
   try {
     const query = req.query.q as string | undefined
@@ -225,7 +244,8 @@ app.get('/api/precedents', async (req, res) => {
       res.status(400).json({ error: 'Missing "q" query parameter' })
       return
     }
-    res.json(await searchPrecedents(query))
+    // Serve from the locally ingested e-Jagriti corpus (see src/ingest.ts).
+    res.json(await localPrecedentResults(query))
   } catch (err) {
     res.status(502).json({ error: (err as Error).message })
   }
@@ -235,6 +255,7 @@ app.get('/api/precedents', async (req, res) => {
 
 const port = Number(process.env.PORT ?? 3001)
 initDb()
+  .then(() => initPrecedentTable())
   .then(() => {
     app.listen(port, () => {
       console.log(`Consumer X API listening on :${port}`)

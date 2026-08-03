@@ -1,0 +1,77 @@
+{
+  "capturedAt": "2026-08-03",
+  "source": "e-Jagriti judgement search API (POST /services/case/caseFilingService/v2/getCaseDetailsBySearchType)",
+  "query": {
+    "commissionId": 11000000,
+    "serchType": 6,
+    "serchTypeValue": "19",
+    "note": "serchType 6 = search by case category ('industry type' in the UI); 19 = DEFECTIVE GOODS (from /services/master/master/v2/getCaseCategory). dateRequestType 2 = case disposal date; orderType 2 = judgement.",
+    "dateRequestType": 2,
+    "orderType": 2,
+    "fromDate": "2025-01-01",
+    "toDate": "2026-08-01"
+  },
+  "records": [
+    {
+      "caseNumber": "NC/CC/399/2014",
+      "complainantName": "HARVINDER SINGH BHULLAR & ANR.",
+      "complainantAdvocateName": "M/S. BHULLAR LAW FIRM,MR. SHIKHAR SHARMA & KARISHMA  THAKUR",
+      "respondentName": "JAGAUR LAND ROVER & 2 ORS.",
+      "respondentAdvocateName": "M/S. KARANJAWALA & CO.,MR. CHANDAN MALIK",
+      "caseFilingDate": "2014-10-01",
+      "orderDocumentPath": null,
+      "orderDate": null,
+      "dateOfDisposal": "2026-04-02",
+      "caseStageName": "DISMISSED",
+      "additionalComplainantList": [
+        { "additional_respondent_name": "Jatinder Pal Singh" }
+      ],
+      "additionalRespondantList": [
+        { "additional_respondent_name": "jaguar Land Rover " },
+        { "additional_respondent_name": "AMP Motors," }
+      ],
+      "additionalComplainant": null,
+      "additionalRespondant": null,
+      "dailyOrderStatus": false,
+      "judgemtmentDocumentPath": null,
+      "judgemtmentDate": "2026-04-02",
+      "dateOfHearing": "2026-04-02",
+      "orderAvailabilityStatusId": 2,
+      "filingReferenceNumber": 100000068261,
+      "pdfBase64Length": 1964748
+    },
+    {
+      "caseNumber": "NC/FA/166/2015",
+      "complainantName": "NECTOR LIFESCIENCES LIMITED",
+      "complainantAdvocateName": "MR.  RAKTIM GOGOI",
+      "respondentName": "PICC PROPERTY AND CASUALTY CO. LTD. & 2 ORS.",
+      "respondentAdvocateName": "MR. AMIT KUMAR SINGH & K. ENATOLI SEMA,MR. AMIT KUMAR SINGH,",
+      "caseFilingDate": "2015-03-04",
+      "orderDocumentPath": null,
+      "orderDate": null,
+      "dateOfDisposal": "2025-03-17",
+      "caseStageName": "DISMISSED",
+      "additionalComplainantList": null,
+      "additionalRespondantList": [
+        { "additional_respondent_name": "GLADSTONE AGENCIES LIMITED, " },
+        { "additional_respondent_name": "GLADSTONE AGENCIES LIMITED " },
+        { "additional_respondent_name": "DAWNRAYS INTERNATIONAL COMPANY LIMITED" }
+      ],
+      "additionalComplainant": null,
+      "additionalRespondant": null,
+      "dailyOrderStatus": false,
+      "judgemtmentDocumentPath": null,
+      "judgemtmentDate": "2025-03-17",
+      "dateOfHearing": "2025-03-17",
+      "orderAvailabilityStatusId": 2,
+      "filingReferenceNumber": 100000074738,
+      "pdfBase64Length": 59948
+    }
+  ],
+  "notes": [
+    "Full API responses also include judgmentOrderDocumentBase64 — the complete judgment PDF, base64-encoded (stripped here for size; lengths kept).",
+    "The endpoint responds to direct POSTs without a captcha token; the captcha only gates the web UI.",
+    "Free-text search (serchType 8) matches party/advocate names, not judgment text — category search is the right tool for topic-scoped ingestion.",
+    "Responses can take 20-40s; the web UI appears to time out and reset, which is why searches looked broken from the browser."
+  ]
+}
