@@ -5,6 +5,8 @@ import { runRoutingEngine } from '../lib/rulesEngine'
 import { groundById } from '../lib/grounds'
 import { fetchPrecedents, type PrecedentResult } from '../lib/precedents'
 import { ensureCaseFromIntake } from '../lib/caseStore'
+import { matchGroup, GROUP_JOIN_FEE } from '../lib/groups'
+import Chip from '../components/Chip'
 
 const BAND_STYLE = {
   strong: { text: 'text-verdict', bg: 'bg-verdict/10', border: 'border-verdict/40', label: 'Strong' },
@@ -27,6 +29,7 @@ export default function Result() {
 
   const result = useMemo(() => runRoutingEngine(data), [data])
   const band = BAND_STYLE[result.evidenceScore.band]
+  const group = matchGroup(data.companyName)
 
   const [precedents, setPrecedents] = useState<PrecedentResult[] | null>(null)
   const [precedentsError, setPrecedentsError] = useState<string | null>(null)
@@ -177,7 +180,40 @@ export default function Result() {
         </p>
       </div>
 
-      {/* CTAs */}
+      {/* GROUP-CLAIM CALLOUT — the aggregation nudge */}
+      {group && (
+        <div className="border border-line border-l-4 border-l-marigold rounded-lg bg-white/70 p-7 mb-6">
+          <Chip tone="gold">YOU'RE NOT ALONE</Chip>
+          <p className="font-display text-2xl text-ink mt-4 mb-2">
+            {group.count} people already have an active claim against {group.company}.
+          </p>
+          <p className="text-sm text-ink-soft mb-4">
+            Similar claims against <span className="font-medium">{group.company}</span> — and against
+            others wronged by the same issue — are being pursued together right now. Join them, and
+            the company faces one coordinated claim worth {group.combinedValue} instead of your ₹
+            {result.totalClaim.toLocaleString('en-IN')} alone.
+          </p>
+          <div className="flex flex-wrap gap-6 mb-5 text-sm">
+            <div>
+              <p className="font-display text-2xl text-ink leading-none">{group.count}</p>
+              <p className="text-ink-soft">claimants</p>
+            </div>
+            <div>
+              <p className="font-display text-2xl text-ink leading-none">{group.combinedValue}</p>
+              <p className="text-ink-soft">combined claim value</p>
+            </div>
+          </div>
+          <Link
+            to="/join-claim"
+            className="inline-block bg-seal text-paper px-6 py-3 rounded-full font-medium hover:bg-ink transition-colors"
+          >
+            Join {group.count} others — {GROUP_JOIN_FEE} →
+          </Link>
+        </div>
+      )}
+
+      {/* CTAs — the individual path (real backend-wired actions) */}
+      {group && <p className="case-number text-seal text-sm mb-3">OR TAKE IT ON INDIVIDUALLY</p>}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="border border-line rounded-lg p-6 bg-white/70">
           <p className="font-display text-lg text-ink mb-1">Want a recovery estimate?</p>

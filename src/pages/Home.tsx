@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GROUNDS } from '../lib/grounds'
+import { GROUP_CLAIMS } from '../lib/groups'
 import StatuteModal from '../components/StatuteModal'
+import Chip, { statusTone } from '../components/Chip'
 import {
   DefectiveGoodsIcon,
   OverchargingIcon,
   HazardousGoodsIcon,
   MisleadingAdIcon,
 } from '../components/EvidenceIcons'
+
+const HOME_CLUSTERS = [GROUP_CLAIMS[0], GROUP_CLAIMS[1], GROUP_CLAIMS[3]] // Vayu, Nimbus, Zephyr
 
 const EVIDENCE_TAGS = [
   { Icon: DefectiveGoodsIcon, label: 'Defective or deficient goods' },
@@ -39,19 +43,19 @@ export default function Home() {
           </p>
           <p className="mt-4 text-lg text-ink-soft max-w-lg">
             Tell us what happened once. We work out which Consumer Commission your case belongs in,
-            draft the notice that goes to the company, and take it all the way to filing if they
-            don't respond.
+            draft the notice that goes to the company — and where others have been wronged the same
+            way, we bring your claims together so the company faces all of you at once.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <Link
               to="/file"
               className="bg-ink text-paper px-7 py-3.5 rounded-full font-medium hover:bg-seal transition-colors"
             >
-              Start your complaint — it's free
+              Start your claim — it's free
             </Link>
-            <a href="#how-it-works" className="text-ink-soft font-medium hover:text-ink transition-colors">
-              See how it works ↓
-            </a>
+            <Link to="/claim-aggregation" className="text-ink-soft font-medium hover:text-ink transition-colors">
+              Browse group claims →
+            </Link>
           </div>
           <p className="mt-6 text-sm text-ink-soft/80">
             No advocate required to file. No cost unless the company ignores you — and if they do, we
@@ -95,8 +99,53 @@ export default function Home() {
         </div>
       </section>
 
+      {/* AGGREGATION BAND */}
+      <section id="aggregation" className="mx-auto max-w-6xl px-6 pt-4 pb-4">
+        <div className="flex flex-wrap justify-between items-baseline gap-2">
+          <div>
+            <p className="case-number text-seal text-sm mb-3">STRENGTH IN NUMBERS</p>
+            <h2 className="font-display text-3xl md:text-4xl max-w-2xl text-ink">
+              A company can wait out one of you. Not a hundred of you.
+            </h2>
+          </div>
+          <Link to="/claim-aggregation" className="text-ink-soft font-medium hover:text-ink whitespace-nowrap">
+            See all group claims →
+          </Link>
+        </div>
+        <p className="text-ink-soft max-w-2xl mt-3 mb-8">
+          When many people are wronged the same way by the same company, Consumer X groups the claims
+          — by company, product and failure — and puts one combined number in front of the brand.
+          Isolated complaints get ignored. Concentrated liability gets settled.
+        </p>
+        <div className="grid sm:grid-cols-3 gap-5">
+          {HOME_CLUSTERS.map((g) => (
+            <Link
+              key={g.id}
+              to="/claim-aggregation"
+              className={`border border-line rounded-lg bg-white/70 p-5 hover:bg-white hover:shadow-sm transition ${
+                g.status === 'collecting' ? 'border-l-4 border-l-seal' : 'border-l-4 border-l-marigold'
+              }`}
+            >
+              <Chip tone={statusTone(g.status)}>{g.statusLabel.toUpperCase()}</Chip>
+              <h3 className="font-display text-lg text-ink mt-3 mb-1">{g.company}</h3>
+              <p className="text-sm text-ink-soft">{g.section}</p>
+              <div className="flex justify-between mt-4 text-sm">
+                <span>
+                  <span className="font-semibold text-ink">{g.count.toLocaleString('en-IN')}</span>{' '}
+                  <span className="text-ink-soft">claimants</span>
+                </span>
+                <span>
+                  <span className="font-semibold text-ink">{g.combinedValue}</span>{' '}
+                  <span className="text-ink-soft">combined</span>
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* HOW IT WORKS */}
-      <section id="how-it-works" className="bg-ink text-paper py-20">
+      <section id="how-it-works" className="bg-ink text-paper py-20 mt-16">
         <div className="mx-auto max-w-6xl px-6">
           <p className="case-number text-marigold-dim text-sm mb-3">THE PROCESS</p>
           <h2 className="font-display text-3xl md:text-4xl mb-14 max-w-xl">
@@ -171,10 +220,10 @@ export default function Home() {
         </h2>
         <div className="grid md:grid-cols-4 gap-5">
           {[
-            { title: 'Intake & evidence', price: 'Free', note: 'Always free, no matter the outcome' },
-            { title: 'Success & recovery estimate', price: '₹499', note: 'One-time, optional assessment' },
-            { title: 'Pre-litigation notice', price: 'Free', note: 'Drafted and sent on your behalf' },
-            { title: 'Filing, if no response', price: '₹5,000', note: 'Covers filing and advocate involvement' },
+            { title: 'Intake & eligibility', price: 'Free', note: 'Always free, no matter the outcome' },
+            { title: 'Recovery assessment', price: '₹499', note: 'One-time, optional' },
+            { title: 'Join a group claim', price: '₹5,000', note: 'Fixed fee, no cut of your recovery' },
+            { title: 'Pursue individually', price: '₹5,500', note: 'Individual filing + advocate' },
           ].map((tier) => (
             <div key={tier.title} className="border border-line rounded-lg p-6 bg-white/60 flex flex-col">
               <p className="text-sm text-ink-soft mb-3">{tier.title}</p>

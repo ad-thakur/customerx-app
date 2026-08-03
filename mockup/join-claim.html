@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join the group claim — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <nav class="main">
+      <a href="about.html">About us</a><a href="01-landing.html#how-it-works">How it works</a><a href="claim-aggregation.html" class="active">Claim aggregation</a><a href="01-landing.html#pricing">Pricing</a>
+    </nav>
+    <a class="chip navy" href="claim-aggregation.html" style="text-decoration:none;">← All group claims</a>
+  </div>
+</header>
+
+<main class="wrap-narrow" style="padding-top:44px;">
+  <p class="eyebrow">Group claim · GC-2026-0043</p>
+  <h1 class="display" style="font-size:32px;">Join the claim against Vayu Appliances.</h1>
+  <p class="muted" style="margin:10px 0 26px;">You're claimant #127. Your case stops being one ticket a company can ignore, and becomes part of a coordinated action it has to answer.</p>
+
+  <!-- Cluster snapshot -->
+  <div class="card white" style="border-left:4px solid var(--marigold); margin-bottom:22px;">
+    <span class="chip gold">COORDINATED NOTICE SENT · WINDOW OPEN</span>
+    <h3 class="display" style="font-size:21px; margin:12px 0 4px;">8kg front-load washing machines — motor defect within warranty</h3>
+    <p class="small muted">Defective goods · Sec. 2(6)(a) · Service centres acknowledged the defect in writing, then refused replacement or refund.</p>
+    <div style="display:flex; gap:30px; margin-top:18px; flex-wrap:wrap;">
+      <div><p class="serif" style="font-size:26px; font-weight:700; line-height:1;">126</p><p class="small muted">claimants so far</p></div>
+      <div><p class="serif" style="font-size:26px; font-weight:700; line-height:1;">₹34.2L</p><p class="small muted">combined claim value</p></div>
+      <div><p class="serif" style="font-size:26px; font-weight:700; line-height:1;">18</p><p class="small muted">days left in the shared window</p></div>
+    </div>
+  </div>
+
+  <!-- What joining does -->
+  <div class="card white" style="margin-bottom:22px;">
+    <h3 class="display" style="margin-bottom:14px;">What joining does</h3>
+    <ul class="timeline" style="margin-top:6px;">
+      <li class="done"><span class="knot"></span><p class="what">Your claim joins the shared file</p><p class="note">Your evidence and details are added to the coordinated group record — kept private to Consumer X.</p></li>
+      <li class="done"><span class="knot"></span><p class="what">You're covered by the coordinated notice</p><p class="note">One notice already went out on behalf of every claimant. There's no separate notice to send — the group's is the notice.</p></li>
+      <li class="current"><span class="knot"></span><p class="what">You settle — or escalate — together</p><p class="note">If Vayu settles the group, you settle on the same terms. If they don't, the group files as a representative complaint, advocate included.</p></li>
+    </ul>
+  </div>
+
+  <!-- Checkout -->
+  <div class="card white" style="border:1.5px solid var(--seal);">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:16px;">
+      <div>
+        <p style="font-weight:700;">Join the group claim — GC-2026-0043</p>
+        <p class="small muted">Your place in the coordinated action · shared advocate representation · filing if the group escalates</p>
+      </div>
+      <p class="serif" style="font-size:28px; font-weight:700;">₹5,000</p>
+    </div>
+    <p class="small muted" style="margin-bottom:16px;">One fixed fee to join — never a percentage of what you recover. There is no separate notice step on a group claim; the coordinated notice is already in play.</p>
+    <button class="pill seal" style="width:100%; padding:14px; font-size:16px;" onclick="openPay()">Join for ₹5,000</button>
+    <p class="small muted" style="text-align:center; margin-top:10px;">UPI · Cards · Netbanking — processed by our payment partner.</p>
+  </div>
+
+  <p class="demo-note">Illustrative demo — fictional data · Group-claim join</p>
+</main>
+
+<!-- Checkout modal -->
+<div class="overlay" id="pay">
+  <div class="modal">
+    <div id="pay-form">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+        <p style="font-weight:700;">Consumer X · Join GC-2026-0043 · ₹5,000</p>
+        <button onclick="closePay()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--ink-soft);">×</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="pill" style="flex:1; padding:8px;" onclick="pay()">UPI</button>
+        <button class="pill ghost" style="flex:1; padding:8px;" onclick="pay()">Card</button>
+        <button class="pill ghost" style="flex:1; padding:8px;" onclick="pay()">Netbanking</button>
+      </div>
+      <div class="fgroup"><label class="field">UPI ID</label><input type="text" value="ananya@okhdfc"></div>
+      <button class="pill" style="width:100%;" onclick="pay()">Pay ₹5,000</button>
+    </div>
+    <div id="pay-wait" hidden style="text-align:center; padding:26px 0;">
+      <div class="spin"></div>
+      <p class="small muted" style="margin-top:14px;">Confirming with your bank…</p>
+    </div>
+    <div id="pay-done" hidden style="text-align:center; padding:14px 0;">
+      <div style="width:56px; height:56px; border-radius:999px; background:var(--verdict); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">✓</div>
+      <h3 class="display">You're claimant #127.</h3>
+      <p class="small muted" style="margin:8px 0 20px;">You've joined the group claim against Vayu Appliances. We'll keep you posted on the shared settlement window — on WhatsApp and here.</p>
+      <a class="pill" href="07-dashboard.html" style="display:block;">Go to my cases →</a>
+    </div>
+  </div>
+</div>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="claim-aggregation.html">←</a><a href="07-dashboard.html">My cases →</a>
+</div>
+
+<script>
+const ov = document.getElementById("pay");
+function openPay() { ov.classList.add("open"); }
+function closePay() { ov.classList.remove("open"); }
+function pay() {
+  document.getElementById("pay-form").hidden = true;
+  document.getElementById("pay-wait").hidden = false;
+  setTimeout(() => {
+    document.getElementById("pay-wait").hidden = true;
+    document.getElementById("pay-done").hidden = false;
+  }, 1400);
+}
+ov.addEventListener("click", function (e) { if (e.target === ov) closePay(); });
+</script>
+</body>
+</html>

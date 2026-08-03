@@ -18,6 +18,10 @@ export default function ReviewStep({ onBack, onSubmit }: { onBack: () => void; o
       <p className="text-ink-soft mb-8">Make sure this looks right — it's what your notice will be built from.</p>
 
       <div className="border border-line rounded-lg bg-white/70 p-6">
+        <Row
+          label="How you're filing"
+          value={data.joinGroup ? 'Group claim — joining others' : 'Individual claim'}
+        />
         <Row label="Ground for complaint" value={ground ? `${ground.label} (${ground.section})` : ''} />
         <Row label="Complainant" value={data.fullName} />
         <Row label="Phone" value={data.phone} />

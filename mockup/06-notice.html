@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your legal notice — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <span class="chip">CASE CX-2026-00417</span>
+  </div>
+</header>
+
+<main class="wrap-narrow" style="padding-top:44px;">
+  <div id="pre-send">
+    <p class="eyebrow">Pre-litigation notice · free</p>
+    <h1 class="display" style="font-size:34px;">Review your notice before it goes.</h1>
+    <p class="muted" style="margin:10px 0 30px;">Drafted from your intake, reviewed against a lawyer-approved template. Sent by email and registered post — delivery tracked, proof preserved for filing.</p>
+  </div>
+  <div id="post-send" hidden>
+    <p class="eyebrow" style="color:var(--verdict);">Notice sent</p>
+    <h1 class="display" style="font-size:34px;">The 30-day clock is running.</h1>
+    <p class="muted" style="margin:10px 0 30px;">Sent by email and registered post. We'll alert you the moment Vayu responds — or the moment the window closes.</p>
+    <div class="grid c3" style="margin-bottom:26px;">
+      <div class="card white" style="text-align:center;"><p class="small muted">Email</p><p style="font-weight:700; color:var(--verdict);">Delivered ✓</p></div>
+      <div class="card white" style="text-align:center;"><p class="small muted">Registered post</p><p style="font-weight:700;">In transit · RN728841955IN</p></div>
+      <div class="card white" style="text-align:center;"><p class="small muted">Response due</p><p style="font-weight:700;" id="due-date">—</p></div>
+    </div>
+  </div>
+
+  <div class="doc">
+    <div style="display:flex; justify-content:space-between; align-items:start;">
+      <p class="ref">REF/CX/2026/00417</p>
+      <p class="ref" id="notice-date"></p>
+    </div>
+    <h3 style="text-align:center; margin:22px 0 4px;">NOTICE OF DEFICIENCY IN GOODS</h3>
+    <p style="text-align:center; font-size:13px; color:var(--ink-soft);">Under the Consumer Protection Act, 2019 — prior to institution of complaint</p>
+
+    <p style="margin-top:26px;"><b>To:</b><br>The Managing Director,<br>Vayu Appliances Pvt. Ltd.,<br>Plot 14, MIDC Bhosari, Pune 411026</p>
+    <p><b>From:</b><br>Ms. Ananya Iyer, Pune, Maharashtra<br>(through Consumer X, correspondence address for service)</p>
+
+    <p><b>Madam/Sir,</b></p>
+    <p class="clause">1. My client purchased a Vayu 8kg front-load washing machine (Invoice VA-2201) for a consideration of ₹24,999. Within three weeks of purchase, the machine developed a drum/motor defect and has since failed to complete any wash cycle.</p>
+    <p class="clause">2. Your authorised service centre inspected the machine on two occasions and has <b>acknowledged the motor defect in writing</b>. Despite this, and despite repeated follow-ups over four months, you have refused replacement or refund.</p>
+    <p class="clause">3. The above constitutes a defect in goods within the meaning of Section 2(10), actionable under Section 2(6)(a) of the Consumer Protection Act, 2019.</p>
+    <p class="clause">4. My client hereby calls upon you, <b>within 30 days of receipt of this notice</b>, to refund the consideration of ₹24,999 together with ₹1,800 incurred in consequential losses, failing which she will institute a complaint before the District Consumer Disputes Redressal Commission, Pune — where, you may note, claims of this value attract no court fee — seeking refund, compensation for deficiency and harassment, and costs.</p>
+    <p class="clause">5. This notice is issued without prejudice to all other rights and remedies available to my client, which are expressly reserved.</p>
+    <p style="margin-top:26px;">Yours faithfully,<br><br><span style="font-style:italic;">for the Complainant</span><br>Consumer X · grievance@consumerx.in</p>
+  </div>
+
+  <div id="send-controls" style="display:flex; gap:14px; justify-content:center; margin-top:30px;">
+    <a class="pill ghost" href="02-intake.html">Edit details</a>
+    <button class="pill seal" onclick="sendNotice()" id="send-btn">Send my notice — free</button>
+  </div>
+  <div id="sent-controls" hidden style="display:flex; gap:14px; justify-content:center; margin-top:30px;">
+    <a class="pill" href="07-dashboard.html">Go to my case dashboard →</a>
+  </div>
+
+  <p class="demo-note">Illustrative demo — fictional data · Screen 6 of 9</p>
+</main>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="05-report.html">←</a><a href="07-dashboard.html">Next: Dashboard →</a>
+</div>
+
+<script>
+const fmt = d => d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+document.getElementById("notice-date").textContent = fmt(new Date());
+const due = new Date(); due.setDate(due.getDate() + 30);
+document.getElementById("due-date").textContent = fmt(due);
+
+function sendNotice() {
+  const btn = document.getElementById("send-btn");
+  btn.textContent = "Sending…"; btn.disabled = true;
+  setTimeout(() => {
+    document.getElementById("pre-send").hidden = true;
+    document.getElementById("post-send").hidden = false;
+    document.getElementById("send-controls").style.display = "none";
+    document.getElementById("sent-controls").hidden = false;
+    document.getElementById("sent-controls").style.display = "flex";
+    window.scrollTo(0, 0);
+  }, 1200);
+}
+</script>
+</body>
+</html>

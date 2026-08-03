@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pursue your case individually — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <span class="chip">CASE CX-2026-00417</span>
+  </div>
+</header>
+
+<main class="wrap-narrow" style="padding-top:44px;">
+  <p class="eyebrow">Pursue individually</p>
+  <h1 class="display" style="font-size:32px;">Going it alone? Here's your path.</h1>
+  <p class="muted" style="margin:10px 0 24px;">Your case, in your name — a free notice to start, an optional assessment, and full representation to the Commission if you want it.</p>
+
+  <!-- Disclaimer: group is usually better & cheaper -->
+  <div class="card" style="border-color:rgba(222,155,46,0.6); background:rgba(222,155,46,0.1); margin-bottom:26px;">
+    <p class="small"><b>Worth knowing before you go solo.</b> 126 people are already pursuing Vayu together for this exact defect. A coordinated claim usually carries more weight with a company than a single case — and it's cheaper: <b>₹5,000 to join the group</b> versus <b>₹5,500 on your own</b>. If you'd still rather run your own case, everything you need is right here. <a href="join-claim.html" style="color:var(--seal); font-weight:600;">Reconsider joining the 126 →</a></p>
+  </div>
+
+  <!-- Lighter first moves -->
+  <div class="grid c2" style="margin-bottom:18px;">
+    <div class="card navy">
+      <span class="chip" style="border-color:rgba(246,242,233,0.4); color:var(--paper);">FREE</span>
+      <h3 class="display" style="margin:12px 0 4px;">Send the notice, free</h3>
+      <p class="small" style="color:rgba(246,242,233,0.7); margin-bottom:18px;">We draft and send your pre-litigation notice to Vayu at no cost. 30 days to respond — you pay nothing unless they ignore it.</p>
+      <a class="pill" href="06-notice.html" style="display:block; text-align:center; background:var(--paper); color:var(--ink);">Draft my notice — free</a>
+    </div>
+    <div class="card white">
+      <span class="chip">OPTIONAL · ₹499</span>
+      <h3 class="display" style="margin:12px 0 4px;">Recovery assessment</h3>
+      <p class="small muted" style="margin-bottom:18px;">Your likelihood band, a realistic recovery range, and cases decided on similar grounds — so you know what your own case is worth before you commit.</p>
+      <a class="pill ghost" href="04-payment.html" style="display:block; text-align:center;">Get my assessment — ₹499</a>
+    </div>
+  </div>
+
+  <!-- The main paid pursuit -->
+  <div class="card white" style="border:1.5px solid var(--seal);">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:16px;">
+      <div>
+        <p style="font-weight:700;">Pursue &amp; file my case individually — CX-2026-00417</p>
+        <p class="small muted">Filing + advocate + representation to resolution</p>
+      </div>
+      <p class="serif" style="font-size:28px; font-weight:700;">₹5,500</p>
+    </div>
+    <p class="small" style="font-weight:600; margin-bottom:12px;">What ₹5,500 covers</p>
+    <div style="display:grid; gap:10px; margin-bottom:18px;">
+      <div style="display:flex; gap:12px; align-items:start;"><span style="color:var(--seal);">▣</span><p class="small">Your filing packet assembled — complaint, evidence annexures, delivery proof of the notice</p></div>
+      <div style="display:flex; gap:12px; align-items:start;"><span style="color:var(--seal);">⚖</span><p class="small">An empanelled advocate engaged for your matter and appearing on your behalf</p></div>
+      <div style="display:flex; gap:12px; align-items:start;"><span style="color:var(--seal);">↗</span><p class="small">Filing at DCDRC Pune — where your claim value attracts no court fee</p></div>
+      <div style="display:flex; gap:12px; align-items:start;"><span style="color:var(--seal);">◔</span><p class="small">Hearing tracking and updates, on WhatsApp and here, to resolution</p></div>
+    </div>
+    <p class="small muted" style="margin-bottom:16px;">The notice above is still free — you only pay this if Vayu ignores it and you choose to file, or now if you'd rather skip the wait. One fixed fee, never a percentage of what you recover.</p>
+    <button class="pill seal" style="width:100%; padding:14px; font-size:16px;" onclick="openPay()">Pay ₹5,500 &amp; pursue my case</button>
+    <p class="small muted" style="text-align:center; margin-top:10px;">UPI · Cards · Netbanking — processed by our payment partner.</p>
+  </div>
+
+  <p class="demo-note">Illustrative demo — fictional data · Individual pursuit</p>
+</main>
+
+<!-- Checkout modal -->
+<div class="overlay" id="pay">
+  <div class="modal">
+    <div id="pay-form">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+        <p style="font-weight:700;">Consumer X · Individual filing · ₹5,500</p>
+        <button onclick="closePay()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--ink-soft);">×</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="pill" style="flex:1; padding:8px;" onclick="pay()">UPI</button>
+        <button class="pill ghost" style="flex:1; padding:8px;" onclick="pay()">Card</button>
+        <button class="pill ghost" style="flex:1; padding:8px;" onclick="pay()">Netbanking</button>
+      </div>
+      <div class="fgroup"><label class="field">UPI ID</label><input type="text" value="ananya@okhdfc"></div>
+      <button class="pill" style="width:100%;" onclick="pay()">Pay ₹5,500</button>
+    </div>
+    <div id="pay-wait" hidden style="text-align:center; padding:26px 0;">
+      <div class="spin"></div>
+      <p class="small muted" style="margin-top:14px;">Confirming with your bank…</p>
+    </div>
+    <div id="pay-done" hidden style="text-align:center; padding:14px 0;">
+      <div style="width:56px; height:56px; border-radius:999px; background:var(--verdict); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">✓</div>
+      <h3 class="display">Your case is ours to carry.</h3>
+      <p class="small muted" style="margin:8px 0 20px;">We're assembling your filing for DCDRC Pune and assigning your advocate. You'll track every step from your dashboard.</p>
+      <a class="pill" href="07-dashboard.html" style="display:block;">Go to my cases →</a>
+    </div>
+  </div>
+</div>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="03-eligibility.html">←</a><a href="07-dashboard.html">My cases →</a>
+</div>
+
+<script>
+const ov = document.getElementById("pay");
+function openPay() { ov.classList.add("open"); }
+function closePay() { ov.classList.remove("open"); }
+function pay() {
+  document.getElementById("pay-form").hidden = true;
+  document.getElementById("pay-wait").hidden = false;
+  setTimeout(() => {
+    document.getElementById("pay-wait").hidden = true;
+    document.getElementById("pay-done").hidden = false;
+  }, 1400);
+}
+ov.addEventListener("click", function (e) { if (e.target === ov) closePay(); });
+</script>
+</body>
+</html>

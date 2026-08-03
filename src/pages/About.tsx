@@ -56,7 +56,7 @@ export default function About() {
     <>
       {/* HERO */}
       <section className="mx-auto max-w-3xl px-6 pt-16 pb-20 text-center">
-        <p className="case-number text-seal text-sm mb-5 tracking-wide">OUR MANIFESTO</p>
+        <p className="case-number text-seal text-sm mb-5 tracking-wide">WHAT WE STAND FOR</p>
         <h1 className="font-display text-4xl md:text-5xl leading-[1.15] tracking-tight text-ink mb-6">
           Millions of Indians are wronged every year.
           <br />
@@ -168,6 +168,55 @@ export default function About() {
           We're not just here to win your case.{' '}
           <span className="italic text-seal">We're here to make winning less necessary.</span>
         </p>
+      </section>
+
+      {/* WHERE THIS GOES — AGGREGATION */}
+      <section className="bg-ink text-paper py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <p className="case-number text-marigold-dim text-sm mb-3">WHERE THIS GOES</p>
+          <h2 className="font-display text-3xl md:text-4xl mb-4 max-w-2xl">
+            The real power isn't one claim. It's every identical claim, pointed at the same company
+            at once.
+          </h2>
+          <p className="text-paper/70 max-w-2xl leading-relaxed">
+            A brand can absorb a single complaint — one refund, quietly, is cheaper than fixing the
+            problem. What it cannot absorb is two hundred of the same complaint arriving together,
+            with a combined liability attached and a coordinated notice behind it. That is the shift
+            Consumer X is built for. We don't just help you file; we find everyone the same company
+            wronged the same way, group your claims, and turn scattered grievances into concentrated
+            leverage the company has to answer.
+          </p>
+          <div className="grid sm:grid-cols-3 gap-8 mt-10">
+            <div className="border-t border-paper/20 pt-5">
+              <h3 className="font-display text-lg mb-1.5">You file alone.</h3>
+              <p className="text-sm text-paper/70">
+                The company weighs one small claim against years of court delay, and waits you out.
+              </p>
+            </div>
+            <div className="border-t border-paper/20 pt-5">
+              <h3 className="font-display text-lg mb-1.5">You file together.</h3>
+              <p className="text-sm text-paper/70">
+                One shared file, one number, one notice on behalf of everyone. Now the delay is the
+                company's problem, not yours.
+              </p>
+            </div>
+            <div className="border-t border-paper/20 pt-5">
+              <h3 className="font-display text-lg mb-1.5">The pattern gets fixed.</h3>
+              <p className="text-sm text-paper/70">
+                Repeated, visible, coordinated claims make mistreating customers cost more than
+                treating them right.
+              </p>
+            </div>
+          </div>
+          <div className="mt-9">
+            <Link
+              to="/claim-aggregation"
+              className="inline-block bg-paper text-ink px-7 py-3.5 rounded-full font-medium hover:bg-marigold-dim transition-colors"
+            >
+              See who people are claiming against →
+            </Link>
+          </div>
+        </div>
       </section>
 
       {/* CLOSING CTA */}

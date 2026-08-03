@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout — Consumer X</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="01-landing.html">
+      <svg viewBox="-50 -50 100 100" fill="currentColor"><path d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(90)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(180)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/><path transform="rotate(270)" d="M0,0 C-7,-16 -18,-24 -26,-40 Q0,-20 26,-40 C18,-24 7,-16 0,0 Z"/></svg>
+      <span class="name">Consumer X</span>
+    </a>
+    <span class="chip">CASE CX-2026-00417</span>
+  </div>
+</header>
+
+<main class="wrap-narrow" style="padding-top:44px; max-width:640px;">
+  <p class="eyebrow">Recovery assessment</p>
+  <h1 class="display" style="font-size:34px;">One payment. A realistic answer.</h1>
+  <p class="muted" style="margin:10px 0 30px;">Before you invest any more time, know what cases like yours actually recover — based on comparable evidence profiles, not optimism.</p>
+
+  <div class="card white" style="margin-bottom:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:16px;">
+      <div>
+        <p style="font-weight:700;">Recovery assessment — Case CX-2026-00417</p>
+        <p class="small muted">Likelihood band · recovery range · comparable cases · recommended path</p>
+      </div>
+      <p class="serif" style="font-size:28px; font-weight:700;">₹499</p>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+      <p class="small muted">One-time · No recurring charges · 100% refunded if we can't assess your case</p>
+      <p style="font-weight:700;">Total: ₹499</p>
+    </div>
+  </div>
+
+  <button class="pill seal" style="width:100%; padding:15px; font-size:16px;" onclick="openPay()">Pay ₹499 securely</button>
+  <p class="small muted" style="text-align:center; margin-top:12px;">UPI · Cards · Netbanking — processed by our payment partner. Consumer X never stores card details.</p>
+
+  <p class="demo-note">Illustrative demo — fictional data · Screen 4 of 9</p>
+</main>
+
+<!-- Fake checkout modal -->
+<div class="overlay" id="pay">
+  <div class="modal">
+    <div id="pay-form">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+        <p style="font-weight:700;">Consumer X · ₹499</p>
+        <button onclick="closePay()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--ink-soft);">×</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="pill" style="flex:1; padding:8px;" onclick="pay()">UPI</button>
+        <button class="pill ghost" style="flex:1; padding:8px;" onclick="pay()">Card</button>
+        <button class="pill ghost" style="flex:1; padding:8px;" onclick="pay()">Netbanking</button>
+      </div>
+      <div class="fgroup"><label class="field">UPI ID</label><input type="text" value="ananya@okhdfc"></div>
+      <button class="pill" style="width:100%;" onclick="pay()">Pay ₹499</button>
+    </div>
+    <div id="pay-wait" hidden style="text-align:center; padding:26px 0;">
+      <div class="spin"></div>
+      <p class="small muted" style="margin-top:14px;">Confirming with your bank…</p>
+    </div>
+    <div id="pay-done" hidden style="text-align:center; padding:14px 0;">
+      <div style="width:56px; height:56px; border-radius:999px; background:var(--verdict); color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">✓</div>
+      <h3 class="display">Payment successful</h3>
+      <p class="small muted" style="margin:8px 0 20px;">Receipt CX-RCPT-88231 emailed to you. Your assessment is ready.</p>
+      <a class="pill" href="05-report.html" style="display:block;">View my recovery assessment →</a>
+    </div>
+  </div>
+</div>
+
+<div class="demo-nav">
+  <a href="index.html">⌂</a><a href="03-eligibility.html">←</a><a href="05-report.html">Next: Report →</a>
+</div>
+
+<script>
+const ov = document.getElementById("pay");
+function openPay() { ov.classList.add("open"); }
+function closePay() { ov.classList.remove("open"); }
+function pay() {
+  document.getElementById("pay-form").hidden = true;
+  document.getElementById("pay-wait").hidden = false;
+  setTimeout(() => {
+    document.getElementById("pay-wait").hidden = true;
+    document.getElementById("pay-done").hidden = false;
+  }, 1400);
+}
+</script>
+</body>
+</html>
