@@ -14,29 +14,36 @@ import Resolution from './pages/Resolution'
 import ClaimAggregation from './pages/ClaimAggregation'
 import JoinClaim from './pages/JoinClaim'
 import IndividualPursuit from './pages/IndividualPursuit'
+import SignIn from './pages/SignIn'
+import AuthCallback from './pages/AuthCallback'
+import { AuthProvider } from './lib/AuthContext'
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header />
-      <main className="flex-1">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/claim-aggregation" element={<ClaimAggregation />} />
-          <Route path="/file" element={<File />} />
-          <Route path="/result" element={<Result />} />
-          <Route path="/join-claim" element={<JoinClaim />} />
-          <Route path="/individual-pursuit" element={<IndividualPursuit />} />
-          <Route path="/pay/:id" element={<Payment />} />
-          <Route path="/report/:id" element={<Report />} />
-          <Route path="/notice/:id" element={<Notice />} />
-          <Route path="/cases" element={<Dashboard />} />
-          <Route path="/case/:id" element={<CaseTracking />} />
-          <Route path="/case/:id/offer" element={<Resolution />} />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
+    <AuthProvider>
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/claim-aggregation" element={<ClaimAggregation />} />
+            <Route path="/file" element={<File />} />
+            <Route path="/result" element={<Result />} />
+            <Route path="/join-claim" element={<JoinClaim />} />
+            <Route path="/individual-pursuit" element={<IndividualPursuit />} />
+            <Route path="/pay/:id" element={<Payment />} />
+            <Route path="/report/:id" element={<Report />} />
+            <Route path="/notice/:id" element={<Notice />} />
+            <Route path="/cases" element={<Dashboard />} />
+            <Route path="/case/:id" element={<CaseTracking />} />
+            <Route path="/case/:id/offer" element={<Resolution />} />
+            <Route path="/signin" element={<SignIn />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
+    </AuthProvider>
   )
 }

@@ -1,9 +1,9 @@
 import { useIntake } from '../../lib/IntakeContext'
-import { groundById } from '../../lib/grounds'
+import { groundsByIds } from '../../lib/grounds'
 
 export default function ReviewStep({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => void }) {
   const { data } = useIntake()
-  const ground = groundById(data.ground)
+  const grounds = groundsByIds(data.grounds)
 
   const Row = ({ label, value }: { label: string; value: string }) => (
     <div className="flex justify-between gap-4 py-2.5 border-b border-line/70 text-sm">
@@ -22,7 +22,10 @@ export default function ReviewStep({ onBack, onSubmit }: { onBack: () => void; o
           label="How you're filing"
           value={data.joinGroup ? 'Group claim — joining others' : 'Individual claim'}
         />
-        <Row label="Ground for complaint" value={ground ? `${ground.label} (${ground.section})` : ''} />
+        <Row
+          label={`Ground${grounds.length > 1 ? 's' : ''} for complaint`}
+          value={grounds.map((g) => `${g.label} (${g.section})`).join(', ')}
+        />
         <Row label="Complainant" value={data.fullName} />
         <Row label="Phone" value={data.phone} />
         <Row label="Opposite party" value={data.companyName} />

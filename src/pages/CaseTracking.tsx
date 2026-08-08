@@ -8,9 +8,10 @@ import {
   fmtDate,
   inr,
   MILESTONES,
+  DISPATCH_LABELS,
   type CaseView,
 } from '../lib/caseStore'
-import { groundById } from '../lib/grounds'
+import { groundsByIds, readGrounds, groundListLabel } from '../lib/grounds'
 
 interface TimelineItem {
   when: string
@@ -38,26 +39,28 @@ function buildTimeline(c: CaseView): { items: TimelineItem[]; current: TimelineI
     const clockDate = (d: number) => fmtDate(caseClockDate(c, d), { day: 'numeric', month: 'short' })
     items.push({
       when: clockDate(0),
-      what: 'Notice sent — email + registered post',
-      note: `${c.notice.ref} · Registered post ${c.notice.postId}.`,
+      what: (c.notice.methods ?? []).length
+        ? `Notice dispatched by you — ${(c.notice.methods ?? []).map((m) => DISPATCH_LABELS[m]).join(' + ')}`
+        : 'Notice dispatched',
+      note: `${c.notice.ref}${c.notice.postId ? ` · Registered post ${c.notice.postId}` : ''}. Keep your postal receipt and A.D. card — they are your proof of service.`,
     })
     if (elapsed >= MILESTONES.emailDelivered)
       items.push({
         when: clockDate(MILESTONES.emailDelivered),
-        what: 'Email delivered',
-        note: 'Delivery receipt preserved — becomes an annexure if we file.',
+        what: 'Email delivered (simulated)',
+        note: 'Demo milestone. Real delivery confirmation comes from your own mail client.',
       })
     if (elapsed >= MILESTONES.postAcknowledged)
       items.push({
         when: clockDate(MILESTONES.postAcknowledged),
-        what: 'Registered post acknowledged',
-        note: 'Proof of service on record.',
+        what: 'Registered post acknowledged (simulated)',
+        note: 'Demo milestone. Track the real article with India Post using the number above.',
       })
     if (elapsed >= MILESTONES.noticeOpened)
       items.push({
         when: clockDate(MILESTONES.noticeOpened),
-        what: 'Company opened the notice',
-        note: 'Read receipt on the grievance mailbox.',
+        what: 'Company opened the notice (simulated)',
+        note: 'Demo milestone — read receipts are not available in this build.',
       })
     if (elapsed >= MILESTONES.offerReceived)
       items.push({
@@ -108,7 +111,7 @@ export default function CaseTracking() {
     )
   }
 
-  const ground = groundById(record.intake.ground)
+  const grounds = groundsByIds(readGrounds(record.intake))
 
   if (!record.notice) {
     return (
@@ -149,7 +152,7 @@ export default function CaseTracking() {
       <div className="flex justify-between items-start flex-wrap gap-4">
         <div>
           <p className="case-number text-xs text-ink-soft">
-            {record.id} · {ground?.label} · {ground?.section}
+            {record.id} · {grounds.map((g) => `${g.label} (${g.section})`).join(' · ')}
           </p>
           <h1 className="font-display text-3xl md:text-4xl text-ink mt-2">
             {record.intake.companyName || 'Your case'}
@@ -290,7 +293,7 @@ export default function CaseTracking() {
 
           <div className="border border-line rounded-lg bg-white/70 p-6 mb-5">
             <h3 className="font-display text-lg text-ink mb-3">Case file</h3>
-            <p className="text-sm text-ink py-2 border-b border-line">📄 {ground ? `Notice — ${ground.label.toLowerCase()}` : 'Pre-litigation notice'} (sent)</p>
+            <p className="text-sm text-ink py-2 border-b border-line">📄 {grounds.length ? `Notice — ${groundListLabel(readGrounds(record.intake))}` : 'Pre-litigation notice'} (sent)</p>
             {record.assessment && (
               <p className="text-sm text-ink py-2 border-b border-line">📄 Recovery assessment report</p>
             )}

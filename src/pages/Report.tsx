@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getCaseView, inr, type CaseView } from '../lib/caseStore'
-import { groundById } from '../lib/grounds'
+import { groundListLabel, readGrounds } from '../lib/grounds'
+import type { GroundId } from '../lib/types'
 import { fetchPrecedents, type PrecedentResult } from '../lib/precedents'
 
 const BAND_LABEL = { strong: 'Strong', moderate: 'Moderate', weak: 'Uncertain' } as const
@@ -29,16 +30,17 @@ export default function Report() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const ground = groundById(record?.intake.ground ?? null)
+  const grounds = record ? readGrounds(record.intake) : []
+  const groundKey = grounds.join(',')
   const hasAiPrecedents = Boolean(record?.assessment?.ai?.precedents?.length)
 
   // Fallback: raw precedent search when the AI layer didn't rank any.
   useEffect(() => {
-    if (!ground || hasAiPrecedents) return
-    fetchPrecedents(`${ground.label} consumer protection act 2019`)
+    if (!groundKey || hasAiPrecedents) return
+    fetchPrecedents(groundListLabel(groundKey.split(',') as GroundId[], false))
       .then(setPrecedents)
       .catch(() => setPrecedents(null))
-  }, [ground, hasAiPrecedents])
+  }, [groundKey, hasAiPrecedents])
 
   if (loading) {
     return <p className="text-center text-ink-soft py-24">Loading your assessment…</p>
@@ -72,7 +74,7 @@ export default function Report() {
         {worthPursuing ? 'Your case is worth pursuing.' : 'Strengthen your case before pursuing it.'}
       </h1>
       <p className="text-ink-soft mb-10">
-        Based on comparable {ground?.label.toLowerCase()} cases at{' '}
+        Based on comparable {groundListLabel(grounds)} cases at{' '}
         {record.routing.commission === 'district' ? 'District' : record.routing.commission === 'state' ? 'State' : 'the National'}{' '}
         Commission{record.routing.commission !== 'national' && 's'} with similar evidence profiles.
         An estimate, not a promise.
@@ -175,7 +177,14 @@ export default function Report() {
               <p className="text-sm text-ink-soft">Couldn't load comparable cases right now.</p>
             )}
             {precedents && precedents.length === 0 && (
-              <p className="text-sm text-ink-soft">No closely matching cases found.</p>
+          <div className="border border-line/70 border-dashed rounded-lg px-5 py-6 text-center">
+            <p className="text-sm text-ink">No similar cases have been filed.</p>
+            <p className="text-xs text-ink-soft mt-1.5 max-w-md mx-auto leading-relaxed">
+              Nothing in the judgment corpus is close enough to your facts to be worth showing.
+              That says nothing about the strength of your case — only that we won't pad this
+              section with cases that aren't comparable.
+            </p>
+          </div>
             )}
             {precedents && precedents.length > 0 && (
               <ul className="space-y-4">
@@ -198,7 +207,8 @@ export default function Report() {
           </>
         )}
         <p className="text-xs text-ink-soft/70 mt-5 pt-4 border-t border-line">
-          Sourced from Indian Kanoon on your statutory ground — never your personal narrative.
+          Retrieved from the e-Jagriti judgment corpus on your statutory grounds — never your
+          personal narrative. Only cases clearing a relevance threshold are shown.
           {hasAiPrecedents && ' Relevance notes are AI-generated from the retrieved judgments only.'}{' '}
           For reference, not a guarantee of outcome.
         </p>

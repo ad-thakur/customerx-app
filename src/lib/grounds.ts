@@ -1,4 +1,4 @@
-import type { Ground } from './types'
+import type { Ground, GroundId } from './types'
 
 export const GROUNDS: Ground[] = [
   {
@@ -86,3 +86,112 @@ export const GROUNDS: Ground[] = [
 ]
 
 export const groundById = (id: string | null) => GROUNDS.find((g) => g.id === id) ?? null
+
+// ---------------------------------------------------------------------------
+// Multi-ground helpers
+//
+// A case carries an ordered list of grounds. Order is meaningful: the first is
+// the primary ground, used for the notice heading and for one-line displays
+// where there is only room for one.
+// ---------------------------------------------------------------------------
+
+/** Resolves ids to Ground objects, preserving selection order, dropping unknowns. */
+export function groundsByIds(ids: GroundId[] | null | undefined): Ground[] {
+  return (ids ?? []).map((id) => groundById(id)).filter((g): g is Ground => g !== null)
+}
+
+/** The primary (first-selected) ground, or null if none chosen. */
+export function primaryGround(ids: GroundId[] | null | undefined): Ground | null {
+  return groundsByIds(ids)[0] ?? null
+}
+
+/**
+ * Reads the grounds off an intake that may predate the multi-ground migration.
+ * Records created before then carry a single `ground` string instead.
+ */
+export function readGrounds(intake: { grounds?: GroundId[]; ground?: GroundId | null }): GroundId[] {
+  if (Array.isArray(intake.grounds) && intake.grounds.length > 0) return intake.grounds
+  return intake.ground ? [intake.ground] : []
+}
+
+/** Human list: "defective goods, deficient service and unfair trade practice". */
+export function groundListLabel(ids: GroundId[] | null | undefined, lower = true): string {
+  const labels = groundsByIds(ids).map((g) => (lower ? g.label.toLowerCase() : g.label))
+  if (labels.length === 0) return ''
+  if (labels.length === 1) return labels[0]
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
+}
+
+// ---------------------------------------------------------------------------
+// Statutory characterisation — paragraph 5 of the legal notice
+//
+// Several grounds collapse onto the same statutory head (spurious goods and
+// misleading advertisement are both pleaded as unfair trade practice under
+// s.2(47)), so clauses are de-duplicated by `key` before rendering.
+// ---------------------------------------------------------------------------
+
+export interface Characterisation {
+  key: string
+  section: string
+  /** Rendered after "amounts to:" — no leading article, no trailing full stop. */
+  text: string
+}
+
+const CHARACTERISATIONS: Record<GroundId, Characterisation> = {
+  defective_goods: {
+    key: 'defect',
+    section: 'Section 2(10)',
+    text: 'a "defect" in the goods supplied within the meaning of Section 2(10) of the Act, being a fault, imperfection or shortcoming in the quality or standard required to be maintained under the contract and as claimed by you',
+  },
+  deficient_service: {
+    key: 'deficiency',
+    section: 'Section 2(11)',
+    text: 'a "deficiency" in the service rendered within the meaning of Section 2(11) of the Act, being a shortfall in the quality, nature and manner of performance required to be maintained, and including the acts of negligence and omission set out above',
+  },
+  unfair_trade_practice: {
+    key: 'utp',
+    section: 'Section 2(47)',
+    text: 'an "unfair trade practice" within the meaning of Section 2(47) of the Act, in that you adopted a deceptive practice and failed to honour the representations and warranty on the faith of which my Client contracted',
+  },
+  overcharging: {
+    key: 'overcharge',
+    section: 'Section 2(6)(iv)',
+    text: 'the charging of a price in excess of the price displayed, agreed between the parties, or fixed by or under law, being a complaint maintainable under Section 2(6)(iv) of the Act',
+  },
+  spurious_goods: {
+    key: 'utp_spurious',
+    section: 'Section 2(47)',
+    text: 'an "unfair trade practice" within the meaning of Section 2(47) of the Act, in that goods which were spurious and not genuine were offered and sold to my Client as genuine',
+  },
+  hazardous_goods: {
+    key: 'hazard',
+    section: 'Section 2(6)(v)',
+    text: 'the offering for sale of goods hazardous to life and safety in contravention of the safety standards required to be complied with under law, being a complaint maintainable under Section 2(6)(v) of the Act',
+  },
+  misleading_ad: {
+    key: 'utp_ad',
+    section: 'Section 2(47)',
+    text: 'an "unfair trade practice" within the meaning of Section 2(47) of the Act, in that a false and misleading representation as to the standard, quality and characteristics of the goods or services was made and relied upon by my Client',
+  },
+}
+
+/**
+ * The statutory clauses to plead for a set of grounds, de-duplicated, always
+ * closing with the Section 2(9) consumer-rights limb the template carries.
+ */
+export function characterisations(ids: GroundId[] | null | undefined): Characterisation[] {
+  const out: Characterisation[] = []
+  const seen = new Set<string>()
+  for (const id of ids ?? []) {
+    const c = CHARACTERISATIONS[id]
+    if (!c || seen.has(c.key)) continue
+    seen.add(c.key)
+    out.push(c)
+  }
+  out.push({
+    key: 'rights',
+    section: 'Section 2(9)',
+    text: 'a violation of the consumer rights recognised under Section 2(9) of the Act, including the right to be protected against goods and services hazardous to life and property and the right to be informed of the quality and standard of goods and services',
+  })
+  return out
+}

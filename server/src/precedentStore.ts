@@ -102,7 +102,77 @@ export async function countPrecedents(category?: string): Promise<number> {
 }
 
 /**
- * Simple full-text lookup — ready to back /api/precedents once the corpus is in place.
+ * Terms that appear in essentially every judgment in a corpus made entirely of
+ * consumer cases. Left in the query they match everything and contribute rank,
+ * which is how a washing-machine complaint ended up matched to agricultural
+ * disputes: "consumer protection act 2019" alone is enough to hit every row.
+ */
+const BOILERPLATE = new Set([
+  'consumer',
+  'consumers',
+  'protection',
+  'act',
+  'acts',
+  '2019',
+  '1986',
+  'section',
+  'sections',
+  'complaint',
+  'complaints',
+  'complainant',
+  'opposite',
+  'party',
+  'parties',
+  'commission',
+  'district',
+  'state',
+  'national',
+  'india',
+  'indian',
+  'case',
+  'cases',
+  'order',
+  'judgment',
+  'judgement',
+  'appeal',
+  'revision',
+  'petition',
+])
+
+/**
+ * Strips boilerplate and punctuation, leaving only terms that can actually
+ * discriminate between cases. Returns '' when nothing discriminating remains —
+ * the caller must treat that as "no basis to search", not "search for anything".
+ */
+export function discriminatingTerms(query: string): string {
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !BOILERPLATE.has(w))
+    .join(' ')
+    .trim()
+}
+
+/**
+ * Minimum ts_rank a row must clear to be shown. Ranks are normalised by
+ * document length (flag 32 → rank/(rank+1)), so this is roughly comparable
+ * across judgments of very different sizes.
+ *
+ * This is a floor, not real relevance matching — it exists to stop obviously
+ * unrelated cases being presented as comparable. Proper subject-matter
+ * matching (product/service taxonomy or embeddings over the corpus) is the
+ * real fix and is not implemented yet. Tune against the ingested corpus.
+ */
+const MIN_RANK = Number(process.env.PRECEDENT_MIN_RANK ?? 0.05)
+
+/**
+ * Full-text lookup over the ingested e-Jagriti corpus.
+ *
+ * Returns an empty array — deliberately, not a filler set — when the query has
+ * no discriminating terms or nothing clears MIN_RANK. Callers should render
+ * "No similar cases have been filed." rather than showing weak matches, since
+ * an irrelevant precedent is worse than none in a legal context.
  */
 export async function searchLocalPrecedents(
   query: string,
@@ -112,24 +182,31 @@ export async function searchLocalPrecedents(
     Pick<PrecedentCase, 'caseNumber' | 'complainant' | 'respondent' | 'outcome'> & {
       judgmentDate: Date | string | null // pg returns DATE columns as Date objects
       snippet: string
+      rank: number
     }
   >
 > {
+  const terms = discriminatingTerms(query)
+  if (!terms) return []
+
   const res = await pool.query(
     `
+    WITH q AS (SELECT plainto_tsquery('english', $1) AS tsq)
     SELECT case_number AS "caseNumber",
            complainant,
            respondent,
            outcome,
            judgment_date AS "judgmentDate",
-           ts_headline('english', coalesce(judgment_text, ''), plainto_tsquery('english', $1),
-                       'MaxWords=40, MinWords=20') AS snippet
-    FROM precedent_cases
-    WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ plainto_tsquery('english', $1)
-    ORDER BY ts_rank(to_tsvector('english', coalesce(judgment_text, '')), plainto_tsquery('english', $1)) DESC
-    LIMIT $2
+           ts_headline('english', coalesce(judgment_text, ''), q.tsq,
+                       'MaxWords=40, MinWords=20') AS snippet,
+           ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) AS rank
+    FROM precedent_cases, q
+    WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
+      AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= $2
+    ORDER BY rank DESC
+    LIMIT $3
     `,
-    [query, limit],
+    [terms, MIN_RANK, limit],
   )
   return res.rows
 }

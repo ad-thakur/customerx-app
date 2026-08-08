@@ -10,6 +10,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import type { AiAssessment, Assessment, CaseRecord } from './types.js'
+import { GROUND_LABELS, readGrounds } from './caseLogic.js'
 import type { PrecedentResult } from './precedents.js'
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
@@ -34,7 +35,7 @@ export async function generateAiAssessment(
 
     const input = {
       case: {
-        ground: c.intake.ground,
+        grounds: readGrounds(c.intake).map((g) => GROUND_LABELS[g]),
         narrative: c.intake.narrative.slice(0, 1500),
         companyName: c.intake.companyName,
         claimAmount: c.intake.claimAmount,

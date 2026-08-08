@@ -7,7 +7,9 @@ import {
   type CaseView,
   type CaseStatus,
 } from '../lib/caseStore'
-import { groundById } from '../lib/grounds'
+import { groundsByIds, readGrounds } from '../lib/grounds'
+import { useAuth } from '../lib/AuthContext'
+import { myCases } from '../lib/auth'
 
 const STATUS_CHIP: Record<CaseStatus, { label: string; cls: string; border: string }> = {
   draft: {
@@ -48,7 +50,7 @@ function subline(c: CaseView): string {
     case 'draft':
       return `Claim ${claim} · Eligibility confirmed · Notice drafted, not yet sent`
     case 'awaiting_response':
-      return `Claim ${claim} · Notice delivered, awaiting response`
+      return `Claim ${claim} · Notice dispatched, awaiting response`
     case 'offer_received':
       return `Claim ${claim} · Settlement offer received — review it before the window closes`
     case 'window_closed':
@@ -60,12 +62,20 @@ function subline(c: CaseView): string {
 
 export default function Dashboard() {
   const [cases, setCases] = useState<CaseView[] | null>(null)
+  const { user, loading: authLoading } = useAuth()
 
   useEffect(() => {
-    listCaseViews()
+    if (authLoading) return
+    // Signed in: start from the account's cases (which carry their tokens), then
+    // fold in anything this browser holds that isn't on the account yet.
+    const account = user
+      ? myCases<CaseView & { token: string }>().catch(() => [])
+      : Promise.resolve([])
+    account
+      .then((a) => listCaseViews(a))
       .then(setCases)
       .catch(() => setCases([]))
-  }, [])
+  }, [user, authLoading])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -96,9 +106,31 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      {/* Anonymous cases live only in this browser — worth saying plainly. */}
+      {!user && cases.length > 0 && (
+        <div className="border border-line border-l-4 border-l-marigold rounded-lg bg-white/70 p-5 mb-8 flex gap-4 items-center flex-wrap justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink mb-0.5">
+              These cases only exist in this browser.
+            </p>
+            <p className="text-sm text-ink-soft">
+              Clear your site data or switch device and they're gone. Add an email to keep them.
+            </p>
+          </div>
+          <Link
+            to="/signin"
+            className="bg-ink text-paper rounded-full px-5 py-2.5 text-sm font-medium hover:bg-seal transition-colors whitespace-nowrap"
+          >
+            Sign up to keep them
+          </Link>
+        </div>
+      )}
+
       {cases.length === 0 ? (
         <div className="border border-line rounded-lg bg-white/70 p-10 text-center">
-          <p className="font-display text-xl text-ink mb-2">No cases yet on this device.</p>
+          <p className="font-display text-xl text-ink mb-2">
+            {user ? 'No cases on your account yet.' : 'No cases yet on this device.'}
+          </p>
           <p className="text-ink-soft mb-6">
             Tell us what happened — the eligibility check is free, and takes about five minutes.
           </p>
@@ -132,7 +164,7 @@ export default function Dashboard() {
               <h3 className="font-display text-2xl text-ink mb-4">Active</h3>
               {active.map((c) => {
                 const chip = STATUS_CHIP[c.derived.status]
-                const ground = groundById(c.intake.ground)
+                const grounds = groundsByIds(readGrounds(c.intake))
                 const daysLeft = MILESTONES.windowCloses - c.derived.noticeDaysElapsed
                 return (
                   <Link
@@ -143,7 +175,7 @@ export default function Dashboard() {
                     <div className="flex justify-between items-start flex-wrap gap-3">
                       <div>
                         <p className="case-number text-xs text-ink-soft">
-                          {c.id} · {ground?.label} · {ground?.section}
+                          {c.id} · {grounds.map((g) => g.label).join(' · ') || 'Ground not set'}
                         </p>
                         <p className="font-display text-lg font-semibold text-ink mt-1">
                           {c.intake.companyName || 'Unnamed company'}
@@ -172,7 +204,7 @@ export default function Dashboard() {
             <>
               <h3 className="font-display text-2xl text-ink mb-4 mt-10">Resolved</h3>
               {resolved.map((c) => {
-                const ground = groundById(c.intake.ground)
+                const grounds = groundsByIds(readGrounds(c.intake))
                 return (
                   <Link
                     key={c.id}
@@ -182,7 +214,7 @@ export default function Dashboard() {
                     <div className="flex justify-between items-start flex-wrap gap-3">
                       <div>
                         <p className="case-number text-xs text-ink-soft">
-                          {c.id} · {ground?.label} · {ground?.section}
+                          {c.id} · {grounds.map((g) => g.label).join(' · ') || 'Ground not set'}
                         </p>
                         <p className="font-display text-lg font-semibold text-ink mt-1">
                           {c.intake.companyName || 'Unnamed company'}

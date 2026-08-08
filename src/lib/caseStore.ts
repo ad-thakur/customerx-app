@@ -45,10 +45,29 @@ export interface Assessment {
   ai: AiAssessment | null
 }
 
+/** How the complainant dispatched the notice. They send it themselves. */
+export type DispatchMethod = 'email' | 'registered_post' | 'courier' | 'other'
+
+export const DISPATCH_LABELS: Record<DispatchMethod, string> = {
+  email: 'Email',
+  registered_post: 'Registered Post with A.D.',
+  courier: 'Courier',
+  other: 'Other',
+}
+
 export interface NoticeMeta {
+  /** When the complainant confirmed dispatch — this starts the 30-day clock. */
   sentAt: string
   ref: string
-  postId: string
+  /** Registered-post tracking number, as entered by the complainant. */
+  postId: string | null
+  methods: DispatchMethod[]
+}
+
+/** The complainant's edits to the generated notice, keyed by block id. */
+export interface NoticeDraft {
+  edits: Record<string, string>
+  updatedAt: string
 }
 
 export interface Resolution {
@@ -71,6 +90,7 @@ export interface CaseView {
   routing: RoutingResult
   clockOffsetDays: number
   assessment?: Assessment | null
+  noticeDraft?: NoticeDraft | null
   notice?: NoticeMeta | null
   resolution?: Resolution | null
   derived: {
@@ -84,8 +104,8 @@ export interface CaseView {
 // Token + signature registries (localStorage)
 // ---------------------------------------------------------------------------
 
-const TOKENS_KEY = 'customerx.caseTokens.v1'
-const SIGS_KEY = 'customerx.caseSigs.v1'
+const TOKENS_KEY = 'consumerx.caseTokens.v1'
+const SIGS_KEY = 'consumerx.caseSigs.v1'
 
 function readMap(key: string): Record<string, string> {
   try {
@@ -118,7 +138,7 @@ export function knownCaseIds(): string[] {
 }
 
 function intakeSignature(d: IntakeData): string {
-  return [d.companyName, d.incidentDate, d.claimAmount, d.ground].join('|')
+  return [d.companyName, d.incidentDate, d.claimAmount, (d.grounds ?? []).join('+')].join('|')
 }
 
 /** Shareable link that carries the case token. */
@@ -179,13 +199,23 @@ export async function getCaseView(id: string, urlToken?: string | null): Promise
   return request<CaseView>(`/api/cases/${id}`, {}, token)
 }
 
-export async function listCaseViews(): Promise<CaseView[]> {
-  const views = await Promise.all(
-    knownCaseIds().map((id) => getCaseView(id).catch(() => null)),
+/**
+ * Every case this browser can reach: the ones whose tokens are held locally,
+ * plus — when signed in — the ones on the account, which may have been filed
+ * on another device. Account cases arrive with their tokens, which we save so
+ * the rest of the app can act on them exactly as if they were filed here.
+ */
+export async function listCaseViews(
+  accountCases: (CaseView & { token: string })[] = [],
+): Promise<CaseView[]> {
+  for (const c of accountCases) saveToken(c.id, c.token)
+
+  const localOnly = knownCaseIds().filter((id) => !accountCases.some((c) => c.id === id))
+  const local = await Promise.all(localOnly.map((id) => getCaseView(id).catch(() => null)))
+
+  return [...accountCases, ...local.filter((v): v is CaseView => v !== null)].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
   )
-  return views
-    .filter((v): v is CaseView => v !== null)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 function caseAction(id: string, action: string, body?: unknown): Promise<CaseView> {
@@ -197,7 +227,24 @@ function caseAction(id: string, action: string, body?: unknown): Promise<CaseVie
 }
 
 export const payCase = (id: string) => caseAction(id, 'pay')
-export const sendNotice = (id: string) => caseAction(id, 'notice')
+
+/**
+ * Records that the complainant has dispatched the notice themselves. Consumer
+ * X does not send it — see the Notice page for the document and email draft.
+ */
+export const recordNoticeDispatch = (
+  id: string,
+  methods: DispatchMethod[],
+  postId?: string,
+) => caseAction(id, 'notice', { methods, postId })
+
+/** Persists edits to the notice draft. Safe to call repeatedly. */
+export const saveNoticeDraft = (id: string, edits: Record<string, string>) =>
+  request<CaseView>(
+    `/api/cases/${id}/notice-draft`,
+    { method: 'PUT', body: JSON.stringify({ edits }) },
+    getToken(id),
+  )
 export const advanceCase = (id: string) => caseAction(id, 'advance')
 export const acceptOffer = (id: string) => caseAction(id, 'accept')
 export const setLedgerConsent = (id: string, consent: boolean) =>
@@ -217,8 +264,15 @@ const NOTICE_HEADINGS: Record<GroundId, string> = {
   misleading_ad: 'NOTICE REGARDING MISLEADING ADVERTISEMENT',
 }
 
-export function noticeHeading(ground: GroundId | null): string {
-  return ground ? NOTICE_HEADINGS[ground] : 'NOTICE UNDER THE CONSUMER PROTECTION ACT, 2019'
+/**
+ * Heading for the notice. A single ground gets its specific heading; where a
+ * case pleads several, the generic statutory heading is used so the document
+ * doesn't understate what is being alleged.
+ */
+export function noticeHeading(grounds: GroundId[] | null | undefined): string {
+  const list = grounds ?? []
+  if (list.length === 1) return NOTICE_HEADINGS[list[0]]
+  return 'LEGAL NOTICE UNDER THE CONSUMER PROTECTION ACT, 2019'
 }
 
 export function noticeRef(caseId: string): string {

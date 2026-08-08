@@ -30,7 +30,12 @@ export interface IntakeData {
   state: string
   companyName: string
   companyAddress: string
-  ground: GroundId | null
+  /** Grievance-officer / customer-care address the notice is emailed to. */
+  companyEmail: string
+  /** Ordered; first entry is the primary ground. Legacy records may carry `ground`. */
+  grounds: GroundId[]
+  /** @deprecated pre-multi-ground records only — read via readGrounds(). */
+  ground?: GroundId | null
   narrative: string
   transactionDate: string
   incidentDate: string
@@ -75,10 +80,26 @@ export interface Assessment {
   ai: AiAssessment | null
 }
 
+/** How the complainant dispatched the notice. They send it themselves. */
+export type DispatchMethod = 'email' | 'registered_post' | 'courier' | 'other'
+
 export interface NoticeMeta {
+  /** When the complainant confirmed dispatch — starts the 30-day clock. */
   sentAt: string
   ref: string
-  postId: string
+  /** Registered-post tracking number, entered by the complainant. */
+  postId: string | null
+  methods: DispatchMethod[]
+}
+
+/**
+ * The complainant's edits to the generated notice, keyed by block id.
+ * Stored separately from NoticeMeta so a draft can be revised for as long as
+ * it likes before any dispatch is recorded.
+ */
+export interface NoticeDraft {
+  edits: Record<string, string>
+  updatedAt: string
 }
 
 export interface Resolution {
@@ -95,6 +116,7 @@ export interface CaseRecord {
   routing: RoutingResult
   clockOffsetDays: number
   assessment?: Assessment | null
+  noticeDraft?: NoticeDraft | null
   notice?: NoticeMeta | null
   resolution?: Resolution | null
 }

@@ -87,6 +87,20 @@ export default function DetailsStep({ onNext, onBack }: { onNext: () => void; on
                 placeholder="Registered or branch address"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Grievance / customer-care email (if known)</label>
+              <input
+                className={inputClass}
+                type="email"
+                value={data.companyEmail}
+                onChange={(e) => update({ companyEmail: e.target.value })}
+                placeholder="e.g. grievance@acme.in"
+              />
+              <p className="text-xs text-ink-soft mt-1">
+                Used to address your notice. Most companies publish a grievance officer's email
+                under their "Contact us" or "Grievance Redressal" page, as required by law.
+              </p>
+            </div>
           </div>
         </fieldset>
 

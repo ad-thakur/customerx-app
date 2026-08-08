@@ -39,9 +39,17 @@ export interface IntakeData {
   // Opposite party
   companyName: string
   companyAddress: string
+  /** Grievance-officer / customer-care address the notice is emailed to. */
+  companyEmail: string
 
-  // Case details
-  ground: GroundId | null
+  // Case details.
+  // A single fact pattern often engages more than one statutory ground — a
+  // washing machine that fails and is then never serviced is both a defect in
+  // goods and a deficiency in service. The first entry is treated as the
+  // primary ground for headings and display; all of them are pleaded in the
+  // notice. Legacy records carrying a single `ground` are normalised on read
+  // (see normalizeIntake in lib/grounds.ts).
+  grounds: GroundId[]
   narrative: string
   transactionDate: string // ISO date
   incidentDate: string // ISO date
@@ -80,7 +88,8 @@ export const emptyIntake: IntakeData = {
   state: '',
   companyName: '',
   companyAddress: '',
-  ground: null,
+  companyEmail: '',
+  grounds: [],
   narrative: '',
   transactionDate: '',
   incidentDate: '',

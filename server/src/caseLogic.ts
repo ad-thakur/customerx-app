@@ -106,8 +106,29 @@ const NOTICE_HEADINGS: Record<GroundId, string> = {
   misleading_ad: 'NOTICE REGARDING MISLEADING ADVERTISEMENT',
 }
 
-export function noticeHeading(ground: GroundId | null): string {
-  return ground ? NOTICE_HEADINGS[ground] : 'NOTICE UNDER THE CONSUMER PROTECTION ACT, 2019'
+export function noticeHeading(grounds: GroundId[] | null | undefined): string {
+  const list = grounds ?? []
+  if (list.length === 1) return NOTICE_HEADINGS[list[0]]
+  return 'LEGAL NOTICE UNDER THE CONSUMER PROTECTION ACT, 2019'
+}
+
+export const GROUND_LABELS: Record<GroundId, string> = {
+  defective_goods: 'defective goods',
+  deficient_service: 'deficiency in service',
+  unfair_trade_practice: 'unfair trade practice',
+  overcharging: 'overcharging in excess of declared price',
+  spurious_goods: 'spurious goods',
+  hazardous_goods: 'hazardous goods',
+  misleading_ad: 'misleading advertisement',
+}
+
+/**
+ * Reads grounds off an intake that may predate the multi-ground migration —
+ * older rows in the cases table still carry a single `ground` string.
+ */
+export function readGrounds(intake: { grounds?: GroundId[]; ground?: GroundId | null }): GroundId[] {
+  if (Array.isArray(intake.grounds) && intake.grounds.length > 0) return intake.grounds
+  return intake.ground ? [intake.ground] : []
 }
 
 export function noticeRef(caseId: string): string {

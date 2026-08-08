@@ -23,6 +23,9 @@ export async function initDb(): Promise<void> {
       resolution JSONB
     )
   `)
+  // Added with the editable-notice work; existing deployments get it here
+  // rather than through a migration tool.
+  await pool.query(`ALTER TABLE cases ADD COLUMN IF NOT EXISTS notice_draft JSONB`)
 }
 
 interface CaseRow {
@@ -33,6 +36,7 @@ interface CaseRow {
   routing: CaseRecord['routing']
   clock_offset_days: number
   assessment: CaseRecord['assessment']
+  notice_draft: CaseRecord['noticeDraft']
   notice: CaseRecord['notice']
   resolution: CaseRecord['resolution']
 }
@@ -45,6 +49,7 @@ function rowToRecord(row: CaseRow): CaseRecord {
     routing: row.routing,
     clockOffsetDays: row.clock_offset_days,
     assessment: row.assessment,
+    noticeDraft: row.notice_draft,
     notice: row.notice,
     resolution: row.resolution,
   }
@@ -76,7 +81,9 @@ export async function countCases(): Promise<number> {
 
 export async function patchCase(
   id: string,
-  patch: Partial<Pick<CaseRecord, 'clockOffsetDays' | 'assessment' | 'notice' | 'resolution'>>,
+  patch: Partial<
+    Pick<CaseRecord, 'clockOffsetDays' | 'assessment' | 'noticeDraft' | 'notice' | 'resolution'>
+  >,
 ): Promise<CaseRecord | null> {
   const sets: string[] = []
   const values: unknown[] = []
@@ -88,6 +95,10 @@ export async function patchCase(
   if (patch.assessment !== undefined) {
     sets.push(`assessment = $${i++}`)
     values.push(JSON.stringify(patch.assessment))
+  }
+  if (patch.noticeDraft !== undefined) {
+    sets.push(`notice_draft = $${i++}`)
+    values.push(JSON.stringify(patch.noticeDraft))
   }
   if (patch.notice !== undefined) {
     sets.push(`notice = $${i++}`)

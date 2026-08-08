@@ -14,7 +14,7 @@ Deploy the **backend first** (the frontend needs its URL).
 ## 0. Push to GitHub
 
 ```bash
-cd customerx
+cd consumerx
 git add -A
 git commit -m "Full-loop app with Railway backend + Vercel frontend"
 git push origin main    # create a GitHub repo first if you haven't
@@ -37,8 +37,16 @@ git push origin main    # create a GitHub repo first if you haven't
    - `ANTHROPIC_API_KEY` = your key from [console.anthropic.com](https://console.anthropic.com)
      (skip it and the assessment ships rules-only — everything else still works)
    - `FRONTEND_ORIGIN` = `*` for now; tighten to your Vercel URL after step 2.
+     **This is also the base URL used to build sign-in links**, so it must be
+     your real frontend URL before anyone tries to sign in.
+   - `RESEND_API_KEY` = a [Resend](https://resend.com) key, so magic-link
+     sign-in emails actually get delivered. Without it, links are only logged
+     to the Railway console and nobody can sign in on their own.
+   - `AUTH_FROM_EMAIL` = the verified sender, e.g. `Consumer X <login@consumerx.in>`.
+   - Do **not** set `AUTH_DEV_ECHO` in production — it returns the sign-in link
+     in the HTTP response, which would let anyone sign in as any address.
 5. **Settings → Networking → Generate Domain**. Copy the URL, e.g.
-   `https://customerx-production-xxxx.up.railway.app`.
+   `https://consumerx-production-xxxx.up.railway.app`.
 6. Sanity check: open `<railway-url>/api/health` — you should see
    `{"ok":true,"ai":true}` (`"ai":false` means no Anthropic key set).
 
@@ -70,7 +78,7 @@ anyone — that link is your demo.
 # Terminal 1 — backend (needs a Postgres; easiest: `railway run` against your
 # cloud DB, or any local Postgres with DATABASE_URL + DATABASE_SSL=false)
 cd server && npm install
-DATABASE_URL=postgres://localhost:5432/customerx DATABASE_SSL=false npm run dev
+DATABASE_URL=postgres://localhost:5432/consumerx DATABASE_SSL=false npm run dev
 
 # Terminal 2 — frontend (Vite proxies /api to :3001)
 npm install && npm run dev
@@ -78,10 +86,16 @@ npm install && npm run dev
 
 ## Notes & known limits (demo scope)
 
-- **No accounts**: a case belongs to whoever holds its token (stored in the
-  browser, embedded in share links). Phase 1.5 replaces this with phone OTP.
-- **Simulated**: payment, notice dispatch, and the company's settlement offer.
-  The demo clock is per-case and user-advanceable from the tracking page.
+- **Accounts are optional**: filing stays anonymous, and a case belongs to
+  whoever holds its token (stored in the browser, embedded in share links).
+  Signing in with an emailed magic link attaches this browser's cases to an
+  account so they follow the user between devices.
+- **Simulated**: payment and the company's settlement offer. The demo clock is
+  per-case and user-advanceable from the tracking page.
+- **Notice dispatch is real, and manual**: the app generates the notice as an
+  editable .docx plus a prefilled email draft. The complainant sends it
+  themselves and then confirms dispatch, which is what starts the 30-day clock.
+  Nothing is sent on their behalf.
 - **Evidence files**: only metadata reaches the server (no file storage yet).
 - **Precedent search** scrapes Indian Kanoon (prototype-grade); switch to
   their paid API before anything public-facing.

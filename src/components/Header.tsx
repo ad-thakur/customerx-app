@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import Logo from './Logo'
+import { useAuth } from '../lib/AuthContext'
 
 const NAV = [
   { label: 'About us', to: '/about', router: true },
@@ -12,6 +13,7 @@ const NAV = [
 
 export default function Header() {
   const location = useLocation()
+  const { user, signOut } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const isFilingFlow =
     location.pathname.startsWith('/file') || location.pathname.startsWith('/result')
@@ -47,6 +49,24 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
+          {user ? (
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              title={user.email}
+              className="hidden sm:inline-block text-sm text-ink-soft hover:text-ink transition-colors"
+            >
+              Sign out
+            </button>
+          ) : (
+            <Link
+              to="/signin"
+              className="hidden sm:inline-block text-sm font-medium text-ink-soft hover:text-ink transition-colors"
+            >
+              Sign in
+            </Link>
+          )}
+
           {!isFilingFlow ? (
             <Link
               to="/file"
@@ -81,6 +101,22 @@ export default function Header() {
           {NAV.map((item) => (
             <NavLink key={item.label} {...item} />
           ))}
+          {user ? (
+            <button
+              type="button"
+              onClick={() => {
+                close()
+                void signOut()
+              }}
+              className="text-left hover:text-ink transition-colors"
+            >
+              Sign out ({user.email})
+            </button>
+          ) : (
+            <Link to="/signin" onClick={close} className="hover:text-ink transition-colors">
+              Sign in
+            </Link>
+          )}
           <Link
             to="/file"
             onClick={close}

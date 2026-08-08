@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { emptyIntake, type IntakeData } from './types'
 
-const STORAGE_KEY = 'customerx.intake.v1'
+const STORAGE_KEY = 'consumerx.intake.v1'
 
 interface IntakeContextValue {
   data: IntakeData

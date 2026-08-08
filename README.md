@@ -13,8 +13,9 @@ and recovery range. Without the key, assessments are rules-only.
 
 ## What's included
 - Landing page (marketing site)
-- 4-step complaint intake flow: ground selection → your/company details → narrative
-  & evidence upload → review
+- 4-step complaint intake flow: ground selection (**multi-select** — one fact
+  pattern often engages several statutory grounds) → your/company details →
+  narrative & evidence upload → review
 - Client-side routing engine:
   - Commission jurisdiction (District / State / National) from claim value, using a
     versioned config table (not hardcoded thresholds)
@@ -25,9 +26,15 @@ and recovery range. Without the key, assessments are rules-only.
 - **₹499 recovery assessment** (`/pay/:id` → `/report/:id`): simulated checkout,
   then a report with likelihood band, realistic recovery range, evidence drivers,
   and comparable precedents
-- **Free pre-litigation notice** (`/notice/:id`): templated notice generated from
-  intake data (ground-specific heading, statutory references, 30-day demand),
-  simulated dispatch by email + registered post
+- **Free pre-litigation notice** (`/notice/:id`): a full Consumer Protection
+  Act, 2019 legal notice generated from intake data — consumer status under
+  s.2(7), chronological facts drawn from the complainant's own account, every
+  selected ground pleaded (s.2(10)/2(11)/2(47)/2(9)), 30-day demand, TAKE
+  NOTICE clause and a schedule of annexures built from the evidence uploaded.
+  Every paragraph is editable in place, and edits persist to the case.
+  Dispatch is **manual and honest**: download an editable `.docx`, open a
+  prefilled email draft, send it yourself, then confirm — which starts the
+  30-day clock. Consumer X never claims to have sent anything it hasn't.
 - **Case dashboard** (`/cases`): all cases with status, recovered total, response
   countdowns
 - **Escalation tracking** (`/case/:id`): case timeline, 30-day countdown ring,
@@ -38,12 +45,19 @@ and recovery range. Without the key, assessments are rules-only.
   the assessment range, accept flow, outcome stats, and opt-in to the public
   outcome ledger
 
+## Accounts
+Filing is anonymous. A case is held by an unguessable per-case token, which
+also powers shareable case links. Before the notice step the user is invited
+to sign up — email magic link, no password — and every case the browser holds
+is then attached to that account so it follows them between devices
+(`src/lib/auth.ts`, `server/src/auth.ts`).
+
 ## Simulated in this build (real in Phase 1.5+)
-- Payments (Razorpay), notice dispatch, and the company's response are simulated;
-  no money moves and no notice actually leaves the building. The 30-day clock is
-  per-case and fast-forwardable from the tracking page (demo control)
-- No user accounts — cases are held by unguessable per-case tokens, which also
-  power shareable case links; phone OTP is the Phase 1.5 replacement
+- Payments (Razorpay) and the company's response are simulated; no money moves.
+  The 30-day clock is per-case and fast-forwardable from the tracking page
+  (demo control), and company-side milestones are labelled as simulated
+- Notice dispatch is **not** simulated — the user sends it themselves; the app
+  only generates the document and the draft
 - Evidence files: only metadata reaches the server (no file storage yet)
 - Assisted filing (day-30 unlock) is stubbed — it's an ops workflow in Phase 2
 - Company grievance-email resolver
@@ -62,7 +76,12 @@ npm run preview   # preview the production build
 ```
 
 ## Key files
-- `src/lib/grounds.ts` — the seven statutory grounds under Section 2(6)
+- `src/lib/grounds.ts` — the seven statutory grounds under Section 2(6), plus
+  multi-ground helpers and the statutory characterisations pleaded in the notice
+- `src/lib/noticeDraft.ts` — the notice draftsman: builds the document from a
+  case, renders it as text, and builds the email draft
+- `src/lib/noticeDocx.ts` + `src/lib/zip.ts` — dependency-free .docx generation
+- `src/lib/auth.ts`, `src/lib/AuthContext.tsx` — magic-link sign-in
 - `src/lib/rulesEngine.ts` — commission routing, limitation check, evidence scoring
 - `src/lib/caseStore.ts` — API client: case operations against the backend, plus
   per-case token registry and display helpers
@@ -75,4 +94,8 @@ npm run preview   # preview the production build
 - `server/src/caseLogic.ts` — server-side state machine + assessment/offer generation
 - `server/src/ai.ts` — Claude assessment layer (narrative + precedent annotation,
   rules-only fallback)
-- `server/src/precedents.ts` — Indian Kanoon search (production route)
+- `server/src/precedents.ts` — Indian Kanoon search (legacy route)
+- `server/src/precedentStore.ts` — local e-Jagriti corpus search, with the
+  relevance threshold and boilerplate-term stripping that stop unrelated
+  judgments being presented as comparable
+- `server/src/auth.ts` — users, magic-link tokens, sessions, case ownership

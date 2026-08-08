@@ -2,7 +2,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { useIntake } from '../lib/IntakeContext'
 import { runRoutingEngine } from '../lib/rulesEngine'
-import { groundById } from '../lib/grounds'
+import { groundListLabel, groundsByIds } from '../lib/grounds'
+import type { GroundId } from '../lib/types'
 import { fetchPrecedents, type PrecedentResult } from '../lib/precedents'
 import { ensureCaseFromIntake } from '../lib/caseStore'
 import { matchGroup, GROUP_JOIN_FEE } from '../lib/groups'
@@ -17,15 +18,15 @@ const BAND_STYLE = {
 export default function Result() {
   const { data } = useIntake()
   const navigate = useNavigate()
-  const ground = groundById(data.ground)
+  const grounds = data.grounds ?? []
   const [creating, setCreating] = useState<'pay' | 'notice' | null>(null)
 
   // Guard: if someone lands here without completing intake, send them back.
   useEffect(() => {
-    if (!data.ground || !data.claimAmount || !data.incidentDate) {
+    if (grounds.length === 0 || !data.claimAmount || !data.incidentDate) {
       navigate('/file')
     }
-  }, [data, navigate])
+  }, [data, grounds.length, navigate])
 
   const result = useMemo(() => runRoutingEngine(data), [data])
   const band = BAND_STYLE[result.evidenceScore.band]
@@ -35,19 +36,21 @@ export default function Result() {
   const [precedentsError, setPrecedentsError] = useState<string | null>(null)
   const [precedentsLoading, setPrecedentsLoading] = useState(false)
 
+  const groundKey = grounds.join(',')
   useEffect(() => {
-    if (!ground) return
+    if (grounds.length === 0) return
     setPrecedentsLoading(true)
     setPrecedentsError(null)
-    // Note: deliberately searches on the statutory ground only, never the user's
+    // Note: deliberately searches on the statutory grounds only, never the user's
     // narrative — we don't send case-specific personal details to a third party.
-    fetchPrecedents(`${ground.label} consumer protection act 2019`)
+    fetchPrecedents(groundListLabel(groundKey.split(',') as GroundId[], false))
       .then(setPrecedents)
       .catch((err) => setPrecedentsError(err.message))
       .finally(() => setPrecedentsLoading(false))
-  }, [ground])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groundKey])
 
-  if (!data.ground) return null
+  if (grounds.length === 0) return null
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-14">
@@ -74,12 +77,18 @@ export default function Result() {
             <p className="font-medium text-ink">{result.courtFeeEstimate}</p>
           </div>
           <div>
-            <p className="text-ink-soft">Ground for complaint</p>
-            <p className="font-medium text-ink">{ground?.label}</p>
+            <p className="text-ink-soft">
+              Ground{grounds.length > 1 ? 's' : ''} for complaint
+            </p>
+            <p className="font-medium text-ink">
+              {groundsByIds(grounds).map((g) => g.label).join(' · ')}
+            </p>
           </div>
           <div>
-            <p className="text-ink-soft">Statutory reference</p>
-            <p className="font-medium text-ink">{ground?.section}</p>
+            <p className="text-ink-soft">Statutory reference{grounds.length > 1 ? 's' : ''}</p>
+            <p className="font-medium text-ink">
+              {groundsByIds(grounds).map((g) => g.section).join(' · ')}
+            </p>
           </div>
         </div>
       </div>
@@ -143,7 +152,7 @@ export default function Result() {
         <p className="text-sm text-ink-soft mb-1">Similar precedents</p>
         <p className="font-display text-xl text-ink mb-4">Cases decided on similar grounds</p>
 
-        {precedentsLoading && <p className="text-sm text-ink-soft">Searching Indian Kanoon…</p>}
+        {precedentsLoading && <p className="text-sm text-ink-soft">Searching decided cases…</p>}
 
         {precedentsError && (
           <p className="text-sm text-ink-soft">
@@ -152,7 +161,14 @@ export default function Result() {
         )}
 
         {precedents && precedents.length === 0 && (
-          <p className="text-sm text-ink-soft">No closely matching cases found.</p>
+          <div className="border border-line/70 border-dashed rounded-lg px-5 py-6 text-center">
+            <p className="text-sm text-ink">No similar cases have been filed.</p>
+            <p className="text-xs text-ink-soft mt-1.5 max-w-md mx-auto leading-relaxed">
+              Nothing in the judgment corpus is close enough to your facts to be worth showing.
+              That says nothing about the strength of your case — only that we won't pad this
+              section with cases that aren't comparable.
+            </p>
+          </div>
         )}
 
         {precedents && precedents.length > 0 && (
@@ -175,8 +191,9 @@ export default function Result() {
         )}
 
         <p className="text-xs text-ink-soft/70 mt-5 pt-4 border-t border-line">
-          Sourced from Indian Kanoon based on your statutory ground — not your case narrative.
-          Provided for reference only; not a guarantee of outcome.
+          Retrieved from the e-Jagriti judgment corpus on your statutory grounds — never your
+          case narrative. Only cases clearing a relevance threshold are shown; where none do, we
+          say so rather than fill the space. For reference only, not a guarantee of outcome.
         </p>
       </div>
 
