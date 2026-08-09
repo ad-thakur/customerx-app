@@ -61,11 +61,17 @@ DATABASE_URL=… npm run ingest -- --ground misleading_ad --pages 5
 ```
 
 `src/categories.ts` maps our seven statutory grounds to e-Jagriti categories.
-It exists because the two taxonomies don't line up: there is no "deficiency in
-service" category at all, so that ground maps to the sectors those cases are
-actually filed under. The same mapping drives retrieval — precedent search is
-restricted to the categories of the case's own grounds before ranking, which
-is what stops unrelated judgments surfacing on keyword overlap alone.
+Only part of e-Jagriti's 600+ entry master list is usable: probing ids 1-45
+against NCDRC found cases up to id 38 and nothing from 39 upwards, where a
+separate consumer-helpline taxonomy begins. Ids 19/20/21 — DEFECTIVE GOODS,
+SERVICE DEFICIENCY, UNFAIR TRADE — line up closely with the statutory heads.
+
+The same mapping drives retrieval: precedent search is restricted to the
+categories of the case's own grounds before ranking, which is what stops
+unrelated judgments surfacing on keyword overlap alone (AGRICULTURE, id 26, is
+a populated category — that is where the farmers came from). Verify a category
+has cases with `--probe` before adding it; mapping a ground to an empty
+category silently returns nothing.
 
 ## Accounts
 Filing is anonymous. A case is held by an unguessable per-case token, which

@@ -21,13 +21,24 @@
 // Category names are matched case-insensitively against the live master list
 // at ingest time. Where a name is duplicated in that list, pin the id.
 //
-// IMPORTANT — most of e-Jagriti's master list is unusable. Probing NCDRC showed
-// a hard boundary: categories with low ids (MEDICAL 1, ELECTRICITY 6, BANKING 8,
-// TELECOM 9, AIRLINES 10, DEFECTIVE GOODS 19) return cases, while everything
-// from roughly id 40 upwards returns nothing even over an 11-year window
-// (ADVERTISEMENTS 43, GENERAL INSURANCE 56, REAL ESTATE 76, UNFAIR TRADE
-// PRACTICES 174, MISLEADING ADVERTISEMENTS 473). The high ids appear to be a
-// consumer-helpline taxonomy that no NCDRC case is filed under.
+// IMPORTANT — only part of e-Jagriti's master list is usable. Probing every id
+// 1-45 against NCDRC (2015-2026) showed cases for ids 1-27, 29, 31, 35-38, and
+// nothing at all from 39 upwards — ADVERTISEMENTS 43, GENERAL INSURANCE 56,
+// REAL ESTATE 76, UNFAIR TRADE PRACTICES 174, MISLEADING ADVERTISEMENTS 473 are
+// all empty. The high ids are a consumer-helpline taxonomy that no NCDRC case
+// is filed under; the low ids are the real filing categories.
+//
+// The useful discovery is that ids 19/20/21 — DEFECTIVE GOODS, SERVICE
+// DEFICIENCY, UNFAIR TRADE — map almost exactly onto the statutory heads, so
+// most grounds resolve to a precise category rather than a proxy.
+//
+// Mapping deliberately stays narrow. Every extra category widens what can be
+// returned as "comparable", and a plausible-looking but unrelated judgment is
+// worse than none. Sector categories (MEDICAL 1, BANKING 8, AIRLINES 10,
+// INSURANCE 3, HOUSING 5, RAILWAYS 7, FINANCE 11, POSTAL 13, EDUCATION 15) all
+// have cases and can be added if recall proves too low — but they let a
+// washing-machine complaint reach medical-negligence judgments, which is the
+// same failure mode in a milder form.
 //
 // So only add a category here after `npm run ingest -- --probe` confirms it
 // has cases. Mapping a ground to an unused category is worse than mapping it
@@ -45,40 +56,42 @@ export interface CategoryRef {
 }
 
 export const GROUND_CATEGORIES: Record<GroundId, CategoryRef[]> = {
-  // Probed 2026-08-09: has cases.
-  defective_goods: [{ name: 'DEFECTIVE GOODS', id: 19 }],
-
-  // No single category corresponds to s.2(11) — those cases are filed under
-  // the sector they arose in. Probed 2026-08-09: these five return cases;
-  // GENERAL INSURANCE (56), LIFE INSURANCE (66) and REAL ESTATE (76) returned
-  // nothing and were removed.
-  deficient_service: [
-    { name: 'MEDICAL', id: 1 },
-    { name: 'ELECTRICITY', id: 6 },
-    { name: 'BANKING', id: 8 },
-    { name: 'TELECOM', id: 9 },
-    { name: 'AIRLINES', id: 10 },
+  // Probed 2026-08-09 against NCDRC: all confirmed to have cases.
+  defective_goods: [
+    { name: 'DEFECTIVE GOODS', id: 19 },
+    { name: 'ELECTRICAL & ELECTRONIC GOODS', id: 27 },
+    { name: 'HOUSE HOLD GOODS', id: 37 },
+    { name: 'AUTOMOBILES', id: 29 },
   ],
 
-  // UNFAIR TRADE PRACTICES (174) returned nothing over 2015-2026, so these
-  // grounds have no confirmed category yet. An empty list means retrieval
-  // returns nothing for them and the UI says "No similar cases have been
-  // filed" — which is true. It must NOT fall back to searching the whole
-  // corpus: that is precisely what surfaced agriculture judgments (id 26) on
-  // a washing-machine complaint. Fill these in once --probe-range finds a
-  // low-id category that carries such cases.
-  unfair_trade_practice: [],
+  // s.2(11) has an exact counterpart at id 20. Kept to that rather than the
+  // sector categories: a deficiency case is more like another deficiency case
+  // than it is like anything else in the same industry.
+  deficient_service: [{ name: 'SERVICE DEFICIENCY', id: 20 }],
 
-  overcharging: [],
+  unfair_trade_practice: [{ name: 'UNFAIR TRADE', id: 21 }],
 
-  // ADVERTISEMENTS (43) and MISLEADING ADVERTISEMENTS (473/1125) both returned
-  // nothing over 2015-2026 — they are helpline-taxonomy entries, not NCDRC
-  // filing categories.
-  misleading_ad: [],
+  // Charging above the displayed or agreed price is pleaded as an unfair trade
+  // practice; there is no separate pricing category with cases.
+  overcharging: [{ name: 'UNFAIR TRADE', id: 21 }],
 
-  spurious_goods: [{ name: 'DEFECTIVE GOODS', id: 19 }],
+  // Passing off spurious goods as genuine is both a defect and a deceptive
+  // practice, and is pleaded under s.2(47).
+  spurious_goods: [
+    { name: 'DEFECTIVE GOODS', id: 19 },
+    { name: 'UNFAIR TRADE', id: 21 },
+  ],
 
-  hazardous_goods: [{ name: 'DEFECTIVE GOODS', id: 19 }],
+  hazardous_goods: [
+    { name: 'DEFECTIVE GOODS', id: 19 },
+    { name: 'ELECTRICAL & ELECTRONIC GOODS', id: 27 },
+  ],
+
+  // There is no advertising category with any cases — ADVERTISEMENTS (43) and
+  // MISLEADING ADVERTISEMENTS (473/1125) are both empty. This matches how the
+  // ground is actually pleaded: a misleading advertisement is an unfair trade
+  // practice under s.2(47), which is what the notice itself argues.
+  misleading_ad: [{ name: 'UNFAIR TRADE', id: 21 }],
 }
 
 /** Category names to search for a set of grounds, de-duplicated. */
