@@ -57,11 +57,18 @@ export interface CategoryRef {
 
 export const GROUND_CATEGORIES: Record<GroundId, CategoryRef[]> = {
   // Probed 2026-08-09 against NCDRC: all confirmed to have cases.
+  //
+  // AUTOMOBILES (29) was here and has been removed. It holds 14 rows against 7
+  // for the two appliance categories combined, so it dominated results: a
+  // washing-machine complaint returned Jaguar Land Rover and Maruti Suzuki
+  // judgments. The law of "defect" under s.2(10) is the same whatever the
+  // goods, so those cases were not wrong — but a complainant reading their own
+  // report should see goods like theirs. Add it back if a vehicle case ever
+  // needs precedents, ideally keyed off the goods rather than the ground.
   defective_goods: [
     { name: 'DEFECTIVE GOODS', id: 19 },
     { name: 'ELECTRICAL & ELECTRONIC GOODS', id: 27 },
     { name: 'HOUSE HOLD GOODS', id: 37 },
-    { name: 'AUTOMOBILES', id: 29 },
   ],
 
   // s.2(11) has an exact counterpart at id 20. Kept to that rather than the
