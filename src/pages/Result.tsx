@@ -43,7 +43,10 @@ export default function Result() {
     setPrecedentsError(null)
     // Note: deliberately searches on the statutory grounds only, never the user's
     // narrative — we don't send case-specific personal details to a third party.
-    fetchPrecedents(groundListLabel(groundKey.split(',') as GroundId[], false))
+    fetchPrecedents(
+      groundListLabel(groundKey.split(',') as GroundId[], false),
+      groundKey.split(',') as GroundId[],
+    )
       .then(setPrecedents)
       .catch((err) => setPrecedentsError(err.message))
       .finally(() => setPrecedentsLoading(false))

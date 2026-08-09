@@ -80,18 +80,53 @@ export async function fetchCaseCategories(): Promise<EJagritiCaseCategory[]> {
   return getJson<EJagritiCaseCategory[]>('/services/master/master/v2/getCaseCategory')
 }
 
-export async function resolveCategoryId(name: string): Promise<number> {
+/**
+ * Resolves a category name to its id.
+ *
+ * The master list contains duplicate names under different ids (e.g.
+ * "MISLEADING ADVERTISEMENTS" is both 473 and 1125), so this warns when a
+ * lookup is ambiguous. Pass `preferId` — from the mapping in categories.ts —
+ * to pick deliberately instead of taking whichever the API returned first.
+ */
+export async function resolveCategoryId(name: string, preferId?: number): Promise<number> {
   const categories = await fetchCaseCategories()
   const wanted = name.trim().toLowerCase()
-  const match = categories.find((c) => c.case_category_name_en?.trim().toLowerCase() === wanted)
-  if (!match) {
-    const sample = categories
-      .slice(0, 15)
-      .map((c) => c.case_category_name_en)
-      .join(', ')
-    throw new Error(`Case category "${name}" not found. Examples: ${sample}…`)
+  const matches = categories.filter((c) => c.case_category_name_en?.trim().toLowerCase() === wanted)
+
+  if (matches.length === 0) {
+    const near = categories
+      .filter((c) => c.case_category_name_en?.toLowerCase().includes(wanted.split(/\s+/)[0] ?? ''))
+      .slice(0, 10)
+      .map((c) => `${c.case_category_id} ${c.case_category_name_en}`)
+    throw new Error(
+      `Case category "${name}" not found.${
+        near.length ? ` Did you mean: ${near.join(' | ')}` : ' Run with --list-categories to browse.'
+      }`,
+    )
   }
-  return match.case_category_id
+
+  if (preferId !== undefined) {
+    const pinned = matches.find((c) => c.case_category_id === preferId)
+    if (pinned) return pinned.case_category_id
+    console.warn(
+      `  ! category "${name}" no longer has id ${preferId}; using ${matches[0].case_category_id} instead`,
+    )
+  } else if (matches.length > 1) {
+    console.warn(
+      `  ! "${name}" is ambiguous — ids ${matches.map((c) => c.case_category_id).join(', ')}. ` +
+        `Using ${matches[0].case_category_id}. Pin one in categories.ts to be sure.`,
+    )
+  }
+
+  return matches[0].case_category_id
+}
+
+/** Categories whose name contains `query` (case-insensitive). Empty query returns all. */
+export async function findCategories(query = ''): Promise<EJagritiCaseCategory[]> {
+  const categories = await fetchCaseCategories()
+  const q = query.trim().toLowerCase()
+  if (!q) return categories
+  return categories.filter((c) => c.case_category_name_en?.toLowerCase().includes(q))
 }
 
 export interface SearchPageOptions {

@@ -45,6 +45,28 @@ and recovery range. Without the key, assessments are rules-only.
   the assessment range, accept flow, outcome stats, and opt-in to the public
   outcome ledger
 
+## Precedent corpus (e-Jagriti)
+
+Comparable cases are served from a locally ingested corpus of NCDRC judgments,
+not a live third-party search. Populate it from `server/`:
+
+```bash
+# Find category names rather than guessing — e-Jagriti's master list has 600+
+# entries and mixes sectors (MEDICAL, BANKING) with complaint types.
+npm run ingest -- --list-categories advertis
+
+# Ingest everything mapped to a statutory ground (see src/categories.ts)
+DATABASE_URL=… npm run ingest -- --ground deficient_service --pages 5
+DATABASE_URL=… npm run ingest -- --ground misleading_ad --pages 5
+```
+
+`src/categories.ts` maps our seven statutory grounds to e-Jagriti categories.
+It exists because the two taxonomies don't line up: there is no "deficiency in
+service" category at all, so that ground maps to the sectors those cases are
+actually filed under. The same mapping drives retrieval — precedent search is
+restricted to the categories of the case's own grounds before ranking, which
+is what stops unrelated judgments surfacing on keyword overlap alone.
+
 ## Accounts
 Filing is anonymous. A case is held by an unguessable per-case token, which
 also powers shareable case links. Before the notice step the user is invited

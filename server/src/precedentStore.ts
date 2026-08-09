@@ -166,8 +166,24 @@ export function discriminatingTerms(query: string): string {
  */
 const MIN_RANK = Number(process.env.PRECEDENT_MIN_RANK ?? 0.05)
 
+export type PrecedentHit = Pick<
+  PrecedentCase,
+  'caseNumber' | 'complainant' | 'respondent' | 'outcome'
+> & {
+  judgmentDate: Date | string | null // pg returns DATE columns as Date objects
+  snippet: string
+  rank: number
+  category: string
+}
+
 /**
  * Full-text lookup over the ingested e-Jagriti corpus.
+ *
+ * `categories` is the real relevance control: pass the categories mapped from
+ * the case's statutory grounds (see categories.ts) and only judgments filed
+ * under those are considered. Keyword rank alone was never enough — every
+ * judgment in a consumer corpus shares most of its vocabulary — which is how a
+ * washing-machine complaint used to surface agricultural disputes.
  *
  * Returns an empty array — deliberately, not a filler set — when the query has
  * no discriminating terms or nothing clears MIN_RANK. Callers should render
@@ -177,17 +193,14 @@ const MIN_RANK = Number(process.env.PRECEDENT_MIN_RANK ?? 0.05)
 export async function searchLocalPrecedents(
   query: string,
   limit = 5,
-): Promise<
-  Array<
-    Pick<PrecedentCase, 'caseNumber' | 'complainant' | 'respondent' | 'outcome'> & {
-      judgmentDate: Date | string | null // pg returns DATE columns as Date objects
-      snippet: string
-      rank: number
-    }
-  >
-> {
+  categories: string[] = [],
+): Promise<PrecedentHit[]> {
   const terms = discriminatingTerms(query)
   if (!terms) return []
+
+  // An empty category list means "no restriction" — used by the raw
+  // /api/precedents lookup, which has no case context to narrow by.
+  const restrict = categories.length > 0
 
   const res = await pool.query(
     `
@@ -196,6 +209,7 @@ export async function searchLocalPrecedents(
            complainant,
            respondent,
            outcome,
+           category,
            judgment_date AS "judgmentDate",
            ts_headline('english', coalesce(judgment_text, ''), q.tsq,
                        'MaxWords=40, MinWords=20') AS snippet,
@@ -203,10 +217,11 @@ export async function searchLocalPrecedents(
     FROM precedent_cases, q
     WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
       AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= $2
+      AND ($4::text[] IS NULL OR category = ANY($4::text[]))
     ORDER BY rank DESC
     LIMIT $3
     `,
-    [terms, MIN_RANK, limit],
+    [terms, MIN_RANK, limit, restrict ? categories : null],
   )
   return res.rows
 }

@@ -37,7 +37,10 @@ export default function Report() {
   // Fallback: raw precedent search when the AI layer didn't rank any.
   useEffect(() => {
     if (!groundKey || hasAiPrecedents) return
-    fetchPrecedents(groundListLabel(groundKey.split(',') as GroundId[], false))
+    fetchPrecedents(
+      groundListLabel(groundKey.split(',') as GroundId[], false),
+      groundKey.split(',') as GroundId[],
+    )
       .then(setPrecedents)
       .catch(() => setPrecedents(null))
   }, [groundKey, hasAiPrecedents])

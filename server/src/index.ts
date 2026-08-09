@@ -15,6 +15,7 @@ import {
 } from './caseLogic.js'
 import { generateAiAssessment } from './ai.js'
 import { initPrecedentTable, searchLocalPrecedents } from './precedentStore.js'
+import { categoriesForGrounds, isGroundId } from './categories.js'
 import {
   caseIdsForUser,
   claimCase,
@@ -247,8 +248,10 @@ app.post('/api/cases/:id/pay', async (req, res) => {
     // verbatim to a third party), then let the AI layer rank/annotate them.
     let precedents: Awaited<ReturnType<typeof localPrecedentResults>> = []
     try {
+      const grounds = readGrounds(record.intake)
       precedents = await localPrecedentResults(
-        readGrounds(record.intake).map((g) => GROUND_LABELS[g]).join(' '),
+        grounds.map((g) => GROUND_LABELS[g]).join(' '),
+        categoriesForGrounds(grounds),
       )
     } catch {
       // precedent search is best-effort
@@ -404,8 +407,8 @@ app.post('/api/cases/:id/ledger', async (req, res) => {
 // Precedents come from the locally ingested e-Jagriti corpus (precedent_cases
 // table, populated by src/ingest.ts) — shaped to the PrecedentResult contract
 // the frontend and ai.ts already expect.
-async function localPrecedentResults(query: string) {
-  const rows = await searchLocalPrecedents(query, 5)
+async function localPrecedentResults(query: string, categories: string[] = []) {
+  const rows = await searchLocalPrecedents(query, 5, categories)
   return rows.map((r) => {
     const date =
       r.judgmentDate instanceof Date
@@ -427,8 +430,15 @@ app.get('/api/precedents', async (req, res) => {
       res.status(400).json({ error: 'Missing "q" query parameter' })
       return
     }
+    // Optional `grounds` (comma-separated) narrows the search to the e-Jagriti
+    // categories those grounds map to — the main relevance control. Without it
+    // the whole corpus is searched, which is rarely what you want.
+    const grounds = String(req.query.grounds ?? '')
+      .split(',')
+      .map((g) => g.trim())
+      .filter(isGroundId)
     // Serve from the locally ingested e-Jagriti corpus (see src/ingest.ts).
-    res.json(await localPrecedentResults(query))
+    res.json(await localPrecedentResults(query, categoriesForGrounds(grounds)))
   } catch (err) {
     res.status(502).json({ error: (err as Error).message })
   }
