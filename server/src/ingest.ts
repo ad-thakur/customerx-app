@@ -15,6 +15,12 @@
  * Discovery:
  *   --list-categories [text]       print matching categories and exit. Use this
  *                                  rather than guessing at names.
+ *   --probe                        for each selected category, fetch a single
+ *                                  record and report whether the category has
+ *                                  any cases at all in the window. No database
+ *                                  writes. Use this before committing to a long
+ *                                  run — e-Jagriti's master list contains many
+ *                                  categories that no NCDRC case is filed under.
  *
  * Scope:
  *   --commission 11000000          commission id (default: NCDRC)
@@ -134,7 +140,9 @@ async function main(): Promise<void> {
     return
   }
 
-  if (!process.env.DATABASE_URL) {
+  const probing = hasFlag('probe')
+
+  if (!probing && !process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Point it at your Postgres (e.g. the Railway connection string).')
     process.exit(1)
   }
@@ -146,6 +154,48 @@ async function main(): Promise<void> {
   const pages = Number(arg('pages', '2'))
   const size = Number(arg('size', '10'))
   const commissionLabel = commissionId === COMMISSION_NCDRC ? 'NCDRC' : String(commissionId)
+
+  if (probing) {
+    console.log(
+      `Probing ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} against ` +
+        `${commissionLabel}, disposed ${fromDate} → ${toDate}. No writes.\n`,
+    )
+    for (const ref of categories) {
+      let categoryId: number
+      try {
+        categoryId =
+          ref.name.startsWith('#') && ref.id !== undefined
+            ? ref.id
+            : await resolveCategoryId(ref.name, ref.id)
+      } catch (err) {
+        console.log(`  ${ref.name.padEnd(30)} — ${(err as Error).message}`)
+        continue
+      }
+      try {
+        const found = await searchCasesByCategory({
+          commissionId,
+          categoryId,
+          fromDate,
+          toDate,
+          page: 0,
+          size: 1,
+        })
+        const first = found[0]
+        console.log(
+          `  ${ref.name.padEnd(30)} id ${String(categoryId).padStart(5)}  ` +
+            (first
+              ? `HAS CASES — e.g. ${first.caseNumber} (disposed ${first.dateOfDisposal ?? '?'})`
+              : 'none in this window'),
+        )
+      } catch (err) {
+        console.log(`  ${ref.name.padEnd(30)} id ${String(categoryId).padStart(5)}  ! ${(err as Error).message}`)
+      }
+      await sleep(1500)
+    }
+    console.log('\nCategories showing "none in this window" are either unused by this commission')
+    console.log('or outside the date range — widen it with --from 2015-01-01 before ruling them out.')
+    return
+  }
 
   console.log(
     `Ingesting ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} ` +
