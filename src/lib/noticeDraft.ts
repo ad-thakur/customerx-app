@@ -48,13 +48,15 @@ export type BlockKind =
 export interface NoticeBlock {
   id: string
   kind: BlockKind
-  /** Rendered before the text: "1.", "(a)", "(iii)". */
+  /** Rendered before the text: "1.", "(a)", "(iii)". Recomputed after any deletions. */
   label?: string
   text: string
   /** Shown to the user in the editor when the block needs their attention. */
   hint?: string
   /** True when the text still contains an unfilled [PLACEHOLDER]. */
   needsInput?: boolean
+  /** For sub-paragraphs: how the auto-number is rendered when renumbering. */
+  numStyle?: 'letter' | 'roman'
 }
 
 export interface NoticeDoc {
@@ -128,6 +130,35 @@ function annexureList(evidence: EvidenceFile[]): string[] {
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii']
 const LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 
+function subLabel(n: number, style: NoticeBlock['numStyle']): string {
+  if (style === 'roman') return `(${ROMAN[n - 1] ?? n})`
+  return `(${LETTERS[n - 1] ?? n})`
+}
+
+/**
+ * Renumbers paragraphs, sub-paragraphs and annexures after any user deletions,
+ * so the notice never shows a gap like "3." then "5.". Sub-paragraph counters
+ * reset at each new numbered paragraph.
+ */
+function renumber(blocks: NoticeBlock[]): void {
+  let para = 0
+  let sub = 0
+  let ann = 0
+  for (const b of blocks) {
+    if (b.kind === 'para') {
+      para += 1
+      sub = 0
+      b.label = `${para}.`
+    } else if (b.kind === 'sub') {
+      sub += 1
+      b.label = subLabel(sub, b.numStyle)
+    } else if (b.kind === 'annexure') {
+      ann += 1
+      b.label = `Annexure ${ann}:`
+    }
+  }
+}
+
 function commissionName(c: CaseView): string {
   switch (c.routing.commission) {
     case 'district':
@@ -156,7 +187,11 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
 
   const blocks: NoticeBlock[] = []
   const push = (b: Omit<NoticeBlock, 'needsInput'>) => {
-    const text = edits[b.id] ?? b.text
+    const edited = edits[b.id]
+    // An edit cleared to empty means the user deleted this block — omit it
+    // entirely, so it also drops out of the text, email and .docx outputs.
+    if (edited !== undefined && edited.trim() === '') return
+    const text = edited ?? b.text
     blocks.push({ ...b, text, needsInput: PLACEHOLDER.test(text) })
   }
 
@@ -272,6 +307,7 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     push({
       id: `p3-${i}`,
       kind: 'sub',
+      numStyle: 'letter',
       label: `(${LETTERS[i] ?? i + 1})`,
       text,
       hint:
@@ -310,6 +346,7 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     push({
       id: `p5-${ch.key}`,
       kind: 'sub',
+      numStyle: 'roman',
       label: `(${ROMAN[i] ?? i + 1})`,
       text: `${ch.text};`,
     })
@@ -359,7 +396,7 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
   demands.push('Pay a sum of [AMOUNT] towards the costs of and incidental to this notice.')
 
   demands.forEach((text, i) => {
-    push({ id: `p7-${i}`, kind: 'sub', label: `(${LETTERS[i]})`, text })
+    push({ id: `p7-${i}`, kind: 'sub', numStyle: 'letter', label: `(${LETTERS[i]})`, text })
   })
 
   /* --- 8-10. Consequence, reservation, record ---------------------------- */
@@ -410,6 +447,8 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
       push({ id: `ann-${i}`, kind: 'annexure', label: `Annexure ${i + 1}:`, text: a })
     })
   }
+
+  renumber(blocks)
 
   return {
     ref: noticeRef(c.id),

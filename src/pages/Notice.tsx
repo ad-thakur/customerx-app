@@ -103,6 +103,24 @@ export default function Notice() {
     }, 700)
   }
 
+  /** Deleting a block just clears its text — buildNotice then omits it and renumbers. */
+  const deleteBlock = (blockId: string) => {
+    editBlock(blockId, '')
+    setEditingId(null)
+  }
+
+  /** Safety net: throw away every edit and rebuild the notice from intake. */
+  const resetDraft = () => {
+    if (!record) return
+    if (!window.confirm('Discard all your edits and restore the original draft?')) return
+    setEdits({})
+    setEditingId(null)
+    setSaveState('saving')
+    saveNoticeDraft(record.id, {})
+      .then(() => setSaveState('saved'))
+      .catch(() => setSaveState('error'))
+  }
+
   const copy = (text: string, which: 'text' | 'body') => {
     navigator.clipboard
       .writeText(text)
@@ -165,9 +183,9 @@ export default function Notice() {
           </h1>
           <p className="text-ink-soft mb-6">
             Drafted from your intake against a standard Consumer Protection Act, 2019 notice.
-            Click any paragraph to rewrite it. When it reads the way you want, download the Word
-            file and send it yourself — from your own email address, and by Registered Post with
-            A.D.
+            Click any paragraph to rewrite it in your own words — or delete it entirely. When it
+            reads the way you want, download the Word file and send it yourself — from your own
+            email address, and by Registered Post with A.D.
           </p>
           <div className="border border-line border-l-4 border-l-marigold rounded-lg bg-white/70 p-5 mb-8">
             <p className="text-sm text-ink font-medium mb-1">Consumer X does not send this for you.</p>
@@ -255,13 +273,27 @@ export default function Notice() {
                     {saveState === 'saved' && 'Saved'}
                     {saveState === 'error' && 'Could not save — your text is still here'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setEditingId(null)}
-                    className="font-body text-xs text-seal font-medium"
-                  >
-                    Done
-                  </button>
+                  <div className="flex items-center gap-4">
+                    {(b.kind === 'para' ||
+                      b.kind === 'sub' ||
+                      b.kind === 'subject' ||
+                      b.kind === 'annexure') && (
+                      <button
+                        type="button"
+                        onClick={() => deleteBlock(b.id)}
+                        className="font-body text-xs text-seal font-medium hover:underline"
+                      >
+                        Delete paragraph
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="font-body text-xs text-ink font-medium"
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
               </div>
             )
@@ -282,6 +314,18 @@ export default function Notice() {
           )
         })}
       </div>
+
+      {!sent && Object.keys(edits).length > 0 && (
+        <div className="text-right mt-3">
+          <button
+            type="button"
+            onClick={resetDraft}
+            className="text-xs text-ink-soft hover:text-seal transition-colors"
+          >
+            Reset the notice to the original draft
+          </button>
+        </div>
+      )}
 
       {/* ---------------------------------------------------------------- */}
       {/* Dispatch kit                                                      */}
