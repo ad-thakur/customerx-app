@@ -154,7 +154,8 @@ async function main(): Promise<void> {
     return
   }
 
-  const probing = hasFlag('probe')
+  // --probe-range implies probe mode: it selects ids to inspect, never to ingest.
+  const probing = hasFlag('probe') || arg('probe-range', '') !== ''
 
   if (!probing && !process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Point it at your Postgres (e.g. the Railway connection string).')
