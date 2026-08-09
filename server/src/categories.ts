@@ -58,17 +58,23 @@ export interface CategoryRef {
 export const GROUND_CATEGORIES: Record<GroundId, CategoryRef[]> = {
   // Probed 2026-08-09 against NCDRC: all confirmed to have cases.
   //
-  // AUTOMOBILES (29) was here and has been removed. It holds 14 rows against 7
-  // for the two appliance categories combined, so it dominated results: a
-  // washing-machine complaint returned Jaguar Land Rover and Maruti Suzuki
-  // judgments. The law of "defect" under s.2(10) is the same whatever the
-  // goods, so those cases were not wrong — but a complainant reading their own
-  // report should see goods like theirs. Add it back if a vehicle case ever
-  // needs precedents, ideally keyed off the goods rather than the ground.
+  // AUTOMOBILES (29) was briefly removed here on the theory that it was the
+  // source of car judgments appearing on a washing-machine complaint. Measured
+  // against the live API, that was wrong twice over: with it removed,
+  // ?grounds=defective_goods returned [] — 62 DEFECTIVE GOODS rows plus 7
+  // appliance rows do not clear MIN_RANK on their own — while the car cases
+  // kept appearing, because they are filed under SERVICE DEFICIENCY (20), not
+  // AUTOMOBILES. Vehicle disputes are pleaded as deficiency in service by the
+  // dealer. Removing it cost recall and fixed nothing, so it is back.
+  //
+  // The real causes of car-heavy results are corpus size and the fact that
+  // vehicle disputes are over-represented at NCDRC. The fix is more rows, or
+  // matching on the goods described in the intake rather than the ground alone.
   defective_goods: [
     { name: 'DEFECTIVE GOODS', id: 19 },
     { name: 'ELECTRICAL & ELECTRONIC GOODS', id: 27 },
     { name: 'HOUSE HOLD GOODS', id: 37 },
+    { name: 'AUTOMOBILES', id: 29 },
   ],
 
   // s.2(11) has an exact counterpart at id 20. Kept to that rather than the
