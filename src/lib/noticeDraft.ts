@@ -67,7 +67,13 @@ export interface NoticeDoc {
   blocks: NoticeBlock[]
 }
 
-const PLACEHOLDER = /\[[A-Z][A-Z0-9 ./_—-]*\]/
+/**
+ * Matches anything still in square brackets: SHOUTING placeholders like
+ * [MODE OF PAYMENT], the blank-line form [__], and lowercase drafting choices
+ * like [wrote to you / lodged complaint No. ___ / called your customer care].
+ * All three need the user's attention before dispatch, so all three count.
+ */
+const PLACEHOLDER = /\[[^\]\n]{2,}\]/
 
 /* -------------------------------------------------------------------------- */
 /* Fact extraction                                                            */

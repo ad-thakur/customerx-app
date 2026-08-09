@@ -41,11 +41,15 @@ const BLOCK_CLASS: Record<NoticeBlock['kind'], string> = {
   annexure: 'mt-2 pl-6 -indent-6',
 }
 
-/** Highlights [PLACEHOLDERS] so the user can see exactly what still needs them. */
+/**
+ * Highlights anything still bracketed so the user can see what needs them.
+ * Must stay in step with PLACEHOLDER in noticeDraft.ts, or the count in the
+ * banner and the highlighting in the document disagree.
+ */
 function withPlaceholders(text: string) {
-  const parts = text.split(/(\[[A-Z][A-Z0-9 ./_—-]*\])/g)
+  const parts = text.split(/(\[[^\]\n]{2,}\])/g)
   return parts.map((part, i) =>
-    /^\[[A-Z]/.test(part) ? (
+    /^\[.+\]$/.test(part) ? (
       <mark key={i} className="bg-marigold/25 text-ink rounded px-1 not-italic">
         {part}
       </mark>

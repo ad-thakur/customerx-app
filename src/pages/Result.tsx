@@ -256,10 +256,10 @@ export default function Result() {
           </button>
         </div>
         <div className="border border-ink rounded-lg p-6 bg-ink text-paper">
-          <p className="font-display text-lg mb-1">Send the notice, free</p>
+          <p className="font-display text-lg mb-1">Get your notice, free</p>
           <p className="text-sm text-paper/70 mb-4">
-            We draft and send a pre-litigation notice to {data.companyName || 'the company'}. 30 days
-            to respond before we talk next steps.
+            We draft a pre-litigation notice to {data.companyName || 'the company'} — you edit it,
+            download it and send it. 30 days to respond before we talk next steps.
           </p>
           <button
             disabled={creating !== null}

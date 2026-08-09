@@ -42,9 +42,10 @@ export default function Home() {
             that already protects you.
           </p>
           <p className="mt-4 text-lg text-ink-soft max-w-lg">
-            Tell us what happened once. We work out which Consumer Commission your case belongs in,
-            draft the notice that goes to the company — and where others have been wronged the same
-            way, we bring your claims together so the company faces all of you at once.
+            Tell us what happened once. We work out which Consumer Commission your case belongs in
+            and draft the notice to the company, ready for you to send — and where others have been
+            wronged the same way, we bring your claims together so the company faces all of you at
+            once.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <Link
@@ -79,9 +80,9 @@ export default function Home() {
           </div>
           <div className="seal absolute -right-6 -bottom-6 w-28 h-28 bg-paper border-seal text-seal shadow-lg -rotate-12">
             <span className="text-center text-xs font-semibold leading-tight">
-              SENT ON
+              READY TO
               <br />
-              YOUR BEHALF
+              SEND
             </span>
           </div>
 
