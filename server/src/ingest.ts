@@ -21,6 +21,10 @@
  *                                  writes. Use this before committing to a long
  *                                  run — e-Jagriti's master list contains many
  *                                  categories that no NCDRC case is filed under.
+ *   --probe-range 1-45             probe every category id in a range, showing
+ *                                  each one's name. Use this to discover which
+ *                                  part of the master list a commission
+ *                                  actually files under.
  *
  * Scope:
  *   --commission 11000000          commission id (default: NCDRC)
@@ -81,6 +85,16 @@ function hasFlag(name: string): boolean {
  */
 function requestedCategories(): CategoryRef[] {
   const out = new Map<string, CategoryRef>()
+
+  const range = arg('probe-range', '')
+  if (range) {
+    const [lo, hi] = range.split('-').map(Number)
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) {
+      console.error(`--probe-range expects "low-high", e.g. 1-45 (got "${range}")`)
+      process.exit(1)
+    }
+    for (let id = lo; id <= hi; id++) out.set(`#${id}`, { name: `#${id}`, id })
+  }
 
   for (const g of args('ground')) {
     if (!isGroundId(g)) {
@@ -160,13 +174,20 @@ async function main(): Promise<void> {
       `Probing ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} against ` +
         `${commissionLabel}, disposed ${fromDate} → ${toDate}. No writes.\n`,
     )
+    // Resolve ids back to names once, so probing by id is readable.
+    const master = await findCategories()
+    const nameById = new Map(master.map((c) => [c.case_category_id, c.case_category_name_en]))
+
     for (const ref of categories) {
       let categoryId: number
+      let label = ref.name
       try {
-        categoryId =
-          ref.name.startsWith('#') && ref.id !== undefined
-            ? ref.id
-            : await resolveCategoryId(ref.name, ref.id)
+        if (ref.name.startsWith('#') && ref.id !== undefined) {
+          categoryId = ref.id
+          label = nameById.get(ref.id) ?? `#${ref.id} (not in master list)`
+        } else {
+          categoryId = await resolveCategoryId(ref.name, ref.id)
+        }
       } catch (err) {
         console.log(`  ${ref.name.padEnd(30)} — ${(err as Error).message}`)
         continue
@@ -181,14 +202,16 @@ async function main(): Promise<void> {
           size: 1,
         })
         const first = found[0]
-        console.log(
-          `  ${ref.name.padEnd(30)} id ${String(categoryId).padStart(5)}  ` +
-            (first
-              ? `HAS CASES — e.g. ${first.caseNumber} (disposed ${first.dateOfDisposal ?? '?'})`
-              : 'none in this window'),
-        )
+        if (first) {
+          console.log(
+            `  ${String(categoryId).padStart(5)}  ${label.padEnd(34)} HAS CASES — ` +
+              `e.g. ${first.caseNumber} (disposed ${first.dateOfDisposal ?? '?'})`,
+          )
+        } else {
+          console.log(`  ${String(categoryId).padStart(5)}  ${label.padEnd(34)} —`)
+        }
       } catch (err) {
-        console.log(`  ${ref.name.padEnd(30)} id ${String(categoryId).padStart(5)}  ! ${(err as Error).message}`)
+        console.log(`  ${String(categoryId).padStart(5)}  ${label.padEnd(34)} ! ${(err as Error).message}`)
       }
       await sleep(1500)
     }

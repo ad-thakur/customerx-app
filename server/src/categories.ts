@@ -20,6 +20,18 @@
 //
 // Category names are matched case-insensitively against the live master list
 // at ingest time. Where a name is duplicated in that list, pin the id.
+//
+// IMPORTANT — most of e-Jagriti's master list is unusable. Probing NCDRC showed
+// a hard boundary: categories with low ids (MEDICAL 1, ELECTRICITY 6, BANKING 8,
+// TELECOM 9, AIRLINES 10, DEFECTIVE GOODS 19) return cases, while everything
+// from roughly id 40 upwards returns nothing even over an 11-year window
+// (ADVERTISEMENTS 43, GENERAL INSURANCE 56, REAL ESTATE 76, UNFAIR TRADE
+// PRACTICES 174, MISLEADING ADVERTISEMENTS 473). The high ids appear to be a
+// consumer-helpline taxonomy that no NCDRC case is filed under.
+//
+// So only add a category here after `npm run ingest -- --probe` confirms it
+// has cases. Mapping a ground to an unused category is worse than mapping it
+// to nothing: retrieval filters to it and silently returns empty.
 // ---------------------------------------------------------------------------
 
 import type { GroundId } from './types.js'
@@ -33,40 +45,40 @@ export interface CategoryRef {
 }
 
 export const GROUND_CATEGORIES: Record<GroundId, CategoryRef[]> = {
-  defective_goods: [
-    { name: 'DEFECTIVE GOODS' },
-    { name: 'CONSUMER DURABLES' },
-    { name: 'AUTOMOBILES' },
-  ],
+  // Probed 2026-08-09: has cases.
+  defective_goods: [{ name: 'DEFECTIVE GOODS', id: 19 }],
 
-  // No single category corresponds to s.2(11). These are the sectors that
-  // generate the bulk of NCDRC deficiency-in-service judgments.
+  // No single category corresponds to s.2(11) — those cases are filed under
+  // the sector they arose in. Probed 2026-08-09: these five return cases;
+  // GENERAL INSURANCE (56), LIFE INSURANCE (66) and REAL ESTATE (76) returned
+  // nothing and were removed.
   deficient_service: [
-    { name: 'MEDICAL' },
-    { name: 'BANKING' },
-    { name: 'GENERAL INSURANCE' },
-    { name: 'LIFE INSURANCE' },
-    { name: 'TELECOM' },
-    { name: 'AIRLINES' },
-    { name: 'REAL ESTATE' },
-    { name: 'ELECTRICITY' },
+    { name: 'MEDICAL', id: 1 },
+    { name: 'ELECTRICITY', id: 6 },
+    { name: 'BANKING', id: 8 },
+    { name: 'TELECOM', id: 9 },
+    { name: 'AIRLINES', id: 10 },
   ],
 
-  unfair_trade_practice: [{ name: 'UNFAIR TRADE PRACTICES' }],
+  // UNFAIR TRADE PRACTICES (174) returned nothing over 2015-2026, so these
+  // grounds have no confirmed category yet. An empty list means retrieval
+  // returns nothing for them and the UI says "No similar cases have been
+  // filed" — which is true. It must NOT fall back to searching the whole
+  // corpus: that is precisely what surfaced agriculture judgments (id 26) on
+  // a washing-machine complaint. Fill these in once --probe-range finds a
+  // low-id category that carries such cases.
+  unfair_trade_practice: [],
 
-  overcharging: [{ name: 'UNFAIR TRADE PRACTICES' }, { name: 'LEGAL METROLOGY' }],
+  overcharging: [],
 
-  spurious_goods: [{ name: 'DEFECTIVE GOODS' }, { name: 'UNFAIR TRADE PRACTICES' }],
+  // ADVERTISEMENTS (43) and MISLEADING ADVERTISEMENTS (473/1125) both returned
+  // nothing over 2015-2026 — they are helpline-taxonomy entries, not NCDRC
+  // filing categories.
+  misleading_ad: [],
 
-  hazardous_goods: [{ name: 'DEFECTIVE GOODS' }, { name: 'UNFAIR TRADE PRACTICES' }],
+  spurious_goods: [{ name: 'DEFECTIVE GOODS', id: 19 }],
 
-  // "MISLEADING ADVERTISEMENTS" appears twice in the master list (473 and
-  // 1125); 473 is the long-standing one, so it is pinned.
-  misleading_ad: [
-    { name: 'MISLEADING ADVERTISEMENTS', id: 473 },
-    { name: 'ADVERTISEMENTS' },
-    { name: 'UNFAIR TRADE PRACTICES' },
-  ],
+  hazardous_goods: [{ name: 'DEFECTIVE GOODS', id: 19 }],
 }
 
 /** Category names to search for a set of grounds, de-duplicated. */

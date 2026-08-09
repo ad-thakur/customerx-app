@@ -407,7 +407,7 @@ app.post('/api/cases/:id/ledger', async (req, res) => {
 // Precedents come from the locally ingested e-Jagriti corpus (precedent_cases
 // table, populated by src/ingest.ts) — shaped to the PrecedentResult contract
 // the frontend and ai.ts already expect.
-async function localPrecedentResults(query: string, categories: string[] = []) {
+async function localPrecedentResults(query: string, categories: string[] | null = null) {
   const rows = await searchLocalPrecedents(query, 5, categories)
   return rows.map((r) => {
     const date =
@@ -433,12 +433,14 @@ app.get('/api/precedents', async (req, res) => {
     // Optional `grounds` (comma-separated) narrows the search to the e-Jagriti
     // categories those grounds map to — the main relevance control. Without it
     // the whole corpus is searched, which is rarely what you want.
-    const grounds = String(req.query.grounds ?? '')
-      .split(',')
-      .map((g) => g.trim())
-      .filter(isGroundId)
+    const raw = String(req.query.grounds ?? '').trim()
+    const grounds = raw.split(',').map((g) => g.trim()).filter(isGroundId)
+    // No grounds given at all → unrestricted corpus search. Grounds given →
+    // restrict to their categories, even if that set is empty (in which case
+    // nothing matches, which is the honest answer).
+    const categories = raw === '' ? null : categoriesForGrounds(grounds)
     // Serve from the locally ingested e-Jagriti corpus (see src/ingest.ts).
-    res.json(await localPrecedentResults(query, categoriesForGrounds(grounds)))
+    res.json(await localPrecedentResults(query, categories))
   } catch (err) {
     res.status(502).json({ error: (err as Error).message })
   }

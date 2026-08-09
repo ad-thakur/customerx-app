@@ -179,11 +179,17 @@ export type PrecedentHit = Pick<
 /**
  * Full-text lookup over the ingested e-Jagriti corpus.
  *
- * `categories` is the real relevance control: pass the categories mapped from
- * the case's statutory grounds (see categories.ts) and only judgments filed
- * under those are considered. Keyword rank alone was never enough — every
- * judgment in a consumer corpus shares most of its vocabulary — which is how a
- * washing-machine complaint used to surface agricultural disputes.
+ * `categories` is the real relevance control:
+ *
+ *   - an array  → only judgments filed under those categories are considered
+ *   - []        → nothing is in scope, so nothing is returned
+ *   - null      → no restriction, search the whole corpus
+ *
+ * The distinction between [] and null matters. A ground with no mapped
+ * category must return nothing, not everything: keyword rank alone was never
+ * enough — every judgment in a consumer corpus shares most of its vocabulary —
+ * which is how a washing-machine complaint used to surface agricultural
+ * disputes (AGRICULTURE is a populated NCDRC category).
  *
  * Returns an empty array — deliberately, not a filler set — when the query has
  * no discriminating terms or nothing clears MIN_RANK. Callers should render
@@ -193,14 +199,14 @@ export type PrecedentHit = Pick<
 export async function searchLocalPrecedents(
   query: string,
   limit = 5,
-  categories: string[] = [],
+  categories: string[] | null = null,
 ): Promise<PrecedentHit[]> {
   const terms = discriminatingTerms(query)
   if (!terms) return []
 
-  // An empty category list means "no restriction" — used by the raw
-  // /api/precedents lookup, which has no case context to narrow by.
-  const restrict = categories.length > 0
+  // Restricted to an empty set — there is nothing this ground could match.
+  if (categories !== null && categories.length === 0) return []
+  const restrict = categories !== null
 
   const res = await pool.query(
     `
