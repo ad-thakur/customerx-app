@@ -111,6 +111,18 @@ app.post('/api/auth/request-link', async (req, res) => {
     const base = (process.env.FRONTEND_ORIGIN ?? '').split(',')[0].trim() || 'http://localhost:5173'
     const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`
     const sent = await sendLoginEmail(email, link)
+    // Report delivery failure honestly rather than showing "check your email"
+    // for a message that was never sent. This says nothing about whether the
+    // address has an account, so it stays non-enumerable.
+    if (!sent.delivered && !sent.devLink) {
+      res.status(502).json({
+        error:
+          sent.failure === 'not_configured'
+            ? 'Sign-in email isn’t configured yet, so we couldn’t send your link. Please try again later.'
+            : 'We couldn’t deliver your sign-in link just now. Please try again in a few minutes.',
+      })
+      return
+    }
     res.json({ ok: true, ...(sent.devLink ? { devLink: sent.devLink } : {}) })
   } catch (err) {
     console.error(err)

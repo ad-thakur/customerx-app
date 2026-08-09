@@ -205,6 +205,11 @@ export async function caseIdsForUser(userId: string): Promise<string[]> {
 
 export interface SendResult {
   delivered: boolean
+  /**
+   * Why delivery failed, safe to show the user. Deliberately does not leak
+   * whether the address has an account — only that we could not send.
+   */
+  failure?: 'not_configured' | 'rejected'
   /** Populated only in dev echo mode — never in production. */
   devLink?: string
 }
@@ -220,12 +225,13 @@ export interface SendResult {
  */
 export async function sendLoginEmail(email: string, link: string): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY
-  const from = process.env.AUTH_FROM_EMAIL ?? 'Consumer X <login@consumerx.in>'
+  const from = process.env.AUTH_FROM_EMAIL ?? 'Consumer X <login@consumerx.co.in>'
 
   if (!key) {
     console.log(`[auth] no RESEND_API_KEY — sign-in link for ${email}:\n${link}`)
     return {
       delivered: false,
+      failure: 'not_configured',
       ...(process.env.AUTH_DEV_ECHO === 'true' ? { devLink: link } : {}),
     }
   }
@@ -249,8 +255,11 @@ export async function sendLoginEmail(email: string, link: string): Promise<SendR
   })
 
   if (!res.ok) {
+    // Most common cause in early setup: sending from onboarding@resend.dev to
+    // anyone other than the Resend account owner, or a from-domain that isn't
+    // verified yet. Both return 403.
     console.error('[auth] Resend rejected the send:', res.status, await res.text())
-    return { delivered: false }
+    return { delivered: false, failure: 'rejected' }
   }
   return { delivered: true }
 }

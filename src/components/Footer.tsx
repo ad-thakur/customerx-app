@@ -24,7 +24,7 @@ export default function Footer() {
         </div>
         <div>
           <p className="text-ink font-medium mb-2">Grievance Officer</p>
-          <p>grievance@consumerx.in · Data handled per the DPDP Act, 2023</p>
+          <p>grievance@consumerx.co.in · Data handled per the DPDP Act, 2023</p>
         </div>
       </div>
     </footer>

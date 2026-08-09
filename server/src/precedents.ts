@@ -18,7 +18,7 @@ export async function searchPrecedents(query: string): Promise<PrecedentResult[]
   const response = await fetch(searchUrl, {
     headers: {
       'User-Agent':
-        'ConsumerX-Prototype/1.0 (precedent research feature; contact grievance@consumerx.in)',
+        'ConsumerX-Prototype/1.0 (precedent research feature; contact grievance@consumerx.co.in)',
     },
     signal: AbortSignal.timeout(10_000),
   })
