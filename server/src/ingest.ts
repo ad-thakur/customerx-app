@@ -10,6 +10,10 @@
  *   --category "DEFECTIVE GOODS"   an explicit category name. Repeatable.
  *   --category-id 473              an explicit category id, for names that are
  *                                  duplicated in e-Jagriti's master list.
+ *   --all-mapped                   every distinct category referenced by any
+ *                                  ground in categories.ts. Prefer this over
+ *                                  listing names by hand — it cannot drift when
+ *                                  the mapping changes.
  *   (default, if none given: DEFECTIVE GOODS)
  *
  * Discovery:
@@ -52,7 +56,7 @@
  *   npm run ingest -- --list-categories advertis
  *   npm run ingest -- --ground deficient_service --pages 5
  *   npm run ingest -- --ground misleading_ad --ground deficient_service --pages 5
- *   npm run ingest -- --count --ground defective_goods --from 2015-01-01
+ *   npm run ingest -- --count --all-mapped --from 2010-01-01
  *   npm run ingest -- --count --all-states --category "HOUSE HOLD GOODS" --from 2015-01-01
  */
 // pdf-parse's package entry has a debug block that breaks under ESM; import the lib directly.
@@ -69,7 +73,7 @@ import {
   searchCasesByCategory,
   type EJagritiCaseRecord,
 } from './ejagriti.js'
-import { GROUND_CATEGORIES, isGroundId, type CategoryRef } from './categories.js'
+import { allCategories, GROUND_CATEGORIES, isGroundId, type CategoryRef } from './categories.js'
 import {
   initPrecedentTable,
   upsertPrecedent,
@@ -102,6 +106,12 @@ function hasFlag(name: string): boolean {
  */
 function requestedCategories(): CategoryRef[] {
   const out = new Map<string, CategoryRef>()
+
+  // Derived from GROUND_CATEGORIES rather than typed out, so a survey or ingest
+  // always covers exactly what retrieval can actually search.
+  if (hasFlag('all-mapped')) {
+    for (const c of allCategories()) out.set(c.name, c)
+  }
 
   const range = arg('probe-range', '')
   if (range) {

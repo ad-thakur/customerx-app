@@ -63,9 +63,21 @@ footer can claim. I am not able to answer this and you should not guess at it.
 
 ## 1. Corpus — measure, then scale to 1,000 per category
 
-Goal: 1,000 judgements for each of the six categories in `categories.ts`
-(DEFECTIVE GOODS, SERVICE DEFICIENCY, UNFAIR TRADE, AUTOMOBILES, ELECTRICAL &
-ELECTRONIC GOODS, HOUSE HOLD GOODS) — 6,000 rows.
+Goal: 1,000 judgements for each distinct category referenced by `GROUND_CATEGORIES`
+in `server/src/categories.ts`. Seven grounds map onto **six distinct categories**,
+several shared between grounds:
+
+| Category | id | Grounds using it |
+|---|---|---|
+| DEFECTIVE GOODS | 19 | defective_goods, spurious_goods, hazardous_goods |
+| SERVICE DEFICIENCY | 20 | deficient_service |
+| UNFAIR TRADE | 21 | unfair_trade_practice, overcharging, misleading_ad |
+| ELECTRICAL & ELECTRONIC GOODS | 27 | defective_goods, hazardous_goods |
+| AUTOMOBILES | 29 | defective_goods |
+| HOUSE HOLD GOODS | 37 | defective_goods |
+
+So the target is 6,000 rows. Use `--all-mapped` rather than listing names —
+it derives from the mapping and cannot drift when the mapping changes.
 
 **Three of the six cannot reach 1,000 at NCDRC.** Measured over 2015–2026,
 asking for 50: AUTOMOBILES returned **14**, ELECTRICAL & ELECTRONIC GOODS
@@ -95,16 +107,14 @@ linear paging would have taken 1,769.
 # From server/, via railway ssh. No database needed — --count never writes.
 
 # 1. What does NCDRC actually hold? (~1 min)
-node dist/ingest.js --count --from 2010-01-01 \
-  --category "DEFECTIVE GOODS" --category "SERVICE DEFICIENCY" \
-  --category "UNFAIR TRADE" --category "AUTOMOBILES" \
-  --category "ELECTRICAL & ELECTRONIC GOODS" --category "HOUSE HOLD GOODS"
+#    --all-mapped derives the category list from GROUND_CATEGORIES, so it
+#    always matches what retrieval can search. Don't type names by hand here.
+node dist/ingest.js --count --all-mapped --from 2010-01-01
 
 # 2. Do State Commissions have the volume? Try the four largest first.
-node dist/ingest.js --count --from 2010-01-01 \
+node dist/ingest.js --count --all-mapped --from 2010-01-01 \
   --commission-name MAHARASHTRA --commission-name "UTTAR PRADESH" \
-  --commission-name KARNATAKA --commission-name DELHI \
-  --category "HOUSE HOLD GOODS" --category "ELECTRICAL & ELECTRONIC GOODS"
+  --commission-name KARNATAKA --commission-name DELHI
 
 # 3. If states are still thin, check one state's districts.
 node dist/ingest.js --count --from 2010-01-01 --districts-of KARNATAKA \
