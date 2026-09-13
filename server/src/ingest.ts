@@ -25,9 +25,19 @@
  *                                  each one's name. Use this to discover which
  *                                  part of the master list a commission
  *                                  actually files under.
+ *   --list-commissions [text]      print State Commissions (and their ids) and exit.
+ *   --count                        report how many judgements exist for each
+ *                                  selected category on each selected commission,
+ *                                  without downloading or storing them. Uses a
+ *                                  binary search over pages, so a category of any
+ *                                  size costs about a dozen requests. Run this
+ *                                  before deciding how large a corpus to build.
  *
  * Scope:
  *   --commission 11000000          commission id (default: NCDRC)
+ *   --commission-name DELHI        commission by name; repeatable. "NCDRC" works.
+ *   --all-states                   every State Commission and circuit bench (55)
+ *   --districts-of KARNATAKA       every District Commission under a state
  *   --from 2024-01-01              disposal date range start (default: 2 years ago)
  *   --to   2026-08-03              disposal date range end (default: today)
  *   --pages 5                      pages per category (default: 2)
@@ -42,13 +52,20 @@
  *   npm run ingest -- --list-categories advertis
  *   npm run ingest -- --ground deficient_service --pages 5
  *   npm run ingest -- --ground misleading_ad --ground deficient_service --pages 5
+ *   npm run ingest -- --count --ground defective_goods --from 2015-01-01
+ *   npm run ingest -- --count --all-states --category "HOUSE HOLD GOODS" --from 2015-01-01
  */
 // pdf-parse's package entry has a debug block that breaks under ESM; import the lib directly.
 import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import {
   COMMISSION_NCDRC,
+  commissionNames,
+  countCasesByCategory,
+  fetchDistrictCommissions,
+  fetchStateCommissions,
   findCategories,
   resolveCategoryId,
+  resolveCommission,
   searchCasesByCategory,
   type EJagritiCaseRecord,
 } from './ejagriti.js'
@@ -122,6 +139,65 @@ function requestedCategories(): CategoryRef[] {
   return out.size > 0 ? [...out.values()] : [{ name: 'DEFECTIVE GOODS' }]
 }
 
+export interface CommissionRef {
+  id: number
+  label: string
+}
+
+/**
+ * The commissions a run should target, from --commission / --commission-name /
+ * --all-states / --districts-of. Defaults to NCDRC so existing invocations are
+ * unchanged.
+ */
+async function requestedCommissions(): Promise<CommissionRef[]> {
+  const out = new Map<number, CommissionRef>()
+
+  for (const raw of args('commission')) {
+    const id = Number(raw)
+    if (!Number.isFinite(id)) {
+      console.error(`--commission expects a number, got "${raw}". Use --commission-name for names.`)
+      process.exit(1)
+    }
+    out.set(id, { id, label: String(id) })
+  }
+
+  for (const name of args('commission-name')) {
+    const c = await resolveCommission(name)
+    out.set(c.id, c)
+  }
+
+  if (hasFlag('all-states')) {
+    for (const c of await fetchStateCommissions()) {
+      if (c.activeStatus) out.set(c.commissionId, { id: c.commissionId, label: c.commissionNameEn.trim() })
+    }
+  }
+
+  for (const stateName of args('districts-of')) {
+    const state = await resolveCommission(stateName)
+    for (const d of await fetchDistrictCommissions(state.id)) {
+      if (d.activeStatus) {
+        out.set(d.commissionId, {
+          id: d.commissionId,
+          label: `${d.commissionNameEn.trim()} (${state.label})`,
+        })
+      }
+    }
+  }
+
+  if (out.size === 0) out.set(COMMISSION_NCDRC, { id: COMMISSION_NCDRC, label: 'NCDRC' })
+
+  // Numeric ids given bare get their real names, so the commission column never
+  // ends up storing "11270000" where the UI expects a readable label.
+  if ([...out.values()].some((c) => c.label === String(c.id))) {
+    const names = await commissionNames(true)
+    for (const [id, c] of out) {
+      if (c.label === String(id)) out.set(id, { id, label: names.get(id) ?? String(id) })
+    }
+  }
+
+  return [...out.values()]
+}
+
 function isoDaysAgo(days: number): string {
   const d = new Date(Date.now() - days * 86400_000)
   return d.toISOString().slice(0, 10)
@@ -157,18 +233,99 @@ async function main(): Promise<void> {
   // --probe-range implies probe mode: it selects ids to inspect, never to ingest.
   const probing = hasFlag('probe') || arg('probe-range', '') !== ''
 
-  if (!probing && !process.env.DATABASE_URL) {
+  if (hasFlag('list-commissions')) {
+    const query = arg('list-commissions', '')
+    const q = (query.startsWith('--') ? '' : query).trim().toLowerCase()
+    const states = (await fetchStateCommissions()).filter(
+      (c) => !q || c.commissionNameEn.toLowerCase().includes(q),
+    )
+    console.log(`${states.length} State Commission(s) matching "${q || '*'}":\n`)
+    console.log(`  ${String(COMMISSION_NCDRC).padStart(9)}  NCDRC (national)`)
+    for (const c of states) {
+      console.log(
+        `  ${String(c.commissionId).padStart(9)}  ${c.commissionNameEn.trim()}` +
+          (c.circuitAdditionBenchStatus ? '  [bench]' : ''),
+      )
+    }
+    console.log('\nDistrict Commissions: --districts-of "<state name>"')
+    return
+  }
+
+  // --count reads only; it never writes, so no database is required.
+  const counting = hasFlag('count')
+
+  if (!probing && !counting && !process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Point it at your Postgres (e.g. the Railway connection string).')
     process.exit(1)
   }
 
   const categories = requestedCategories()
+  // Probe paths still use a single commission; the count and ingest paths use
+  // requestedCommissions() so they can span states and districts.
   const commissionId = Number(arg('commission', String(COMMISSION_NCDRC)))
   const fromDate = arg('from', isoDaysAgo(730))
   const toDate = arg('to', new Date().toISOString().slice(0, 10))
   const pages = Number(arg('pages', '2'))
   const size = Number(arg('size', '10'))
   const commissionLabel = commissionId === COMMISSION_NCDRC ? 'NCDRC' : String(commissionId)
+
+  if (counting) {
+    const commissions = await requestedCommissions()
+    console.log(
+      `Counting ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} across ` +
+        `${commissions.length} commission(s), disposed ${fromDate} → ${toDate}. No writes.\n`,
+    )
+
+    let grandTotal = 0
+    let grandRequests = 0
+    for (const commission of commissions) {
+      console.log(`\n=== ${commission.label} (${commission.id}) ===`)
+      let commissionTotal = 0
+
+      for (const ref of categories) {
+        let categoryId: number
+        try {
+          categoryId =
+            ref.name.startsWith('#') && ref.id !== undefined
+              ? ref.id
+              : await resolveCategoryId(ref.name, ref.id)
+        } catch (err) {
+          console.log(`  ${ref.name.padEnd(32)} — ${(err as Error).message}`)
+          continue
+        }
+
+        try {
+          const { total, requests, capped } = await countCasesByCategory({
+            commissionId: commission.id,
+            categoryId,
+            fromDate,
+            toDate,
+            size,
+          })
+          commissionTotal += total
+          grandRequests += requests
+          console.log(
+            `  ${ref.name.padEnd(32)} ${String(total).padStart(6)}${capped ? '+' : ' '}` +
+              `   (${requests} requests)`,
+          )
+        } catch (err) {
+          console.log(`  ${ref.name.padEnd(32)}      ? — ${(err as Error).message}`)
+        }
+        await sleep(1500)
+      }
+
+      console.log(`  ${'—'.padEnd(32)} ${String(commissionTotal).padStart(6)}   subtotal`)
+      grandTotal += commissionTotal
+    }
+
+    console.log(`\n${grandTotal} judgements available across all selections.`)
+    console.log(`Cost of this survey: ${grandRequests} requests.`)
+    console.log(
+      `Ingesting all of them would be ~${Math.ceil(grandTotal / size)} page fetches ` +
+        `(~${Math.ceil((grandTotal / size) * 33 / 60)} minutes at 33s/page).`,
+    )
+    return
+  }
 
   if (probing) {
     console.log(
@@ -221,48 +378,54 @@ async function main(): Promise<void> {
     return
   }
 
+  const commissions = await requestedCommissions()
+
   console.log(
     `Ingesting ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} ` +
-      `(${categories.map((c) => c.name).join(', ')}) — up to ${pages * size} cases each ` +
-      `from ${commissionLabel}, disposed ${fromDate} → ${toDate}.\n`,
+      `(${categories.map((c) => c.name).join(', ')}) across ${commissions.length} commission(s) ` +
+      `— up to ${pages * size} cases each, disposed ${fromDate} → ${toDate}.\n`,
   )
 
   await initPrecedentTable()
 
   const summary: Array<{ category: string; inserted: number; updated: number; total: number }> = []
 
-  for (const ref of categories) {
-    console.log(`\n=== ${ref.name} ===`)
-    let categoryId: number
-    let category = ref.name
-    try {
-      if (ref.name.startsWith('#') && ref.id !== undefined) {
-        categoryId = ref.id
-        category = `#${ref.id}`
-      } else {
-        categoryId = await resolveCategoryId(ref.name, ref.id)
+  for (const commission of commissions) {
+    if (commissions.length > 1) console.log(`\n######## ${commission.label} ########`)
+
+    for (const ref of categories) {
+      console.log(`\n=== ${ref.name} ===`)
+      let categoryId: number
+      let category = ref.name
+      try {
+        if (ref.name.startsWith('#') && ref.id !== undefined) {
+          categoryId = ref.id
+          category = `#${ref.id}`
+        } else {
+          categoryId = await resolveCategoryId(ref.name, ref.id)
+        }
+      } catch (err) {
+        // One bad category name shouldn't abandon the rest of the run.
+        console.error(`  ! skipping: ${(err as Error).message}`)
+        continue
       }
-    } catch (err) {
-      // One bad category name shouldn't abandon the rest of the run.
-      console.error(`  ! skipping: ${(err as Error).message}`)
-      continue
+      console.log(`  category id ${categoryId}`)
+
+      const counts = await ingestCategory({
+        category,
+        categoryId,
+        commissionId: commission.id,
+        commissionLabel: commission.label,
+        fromDate,
+        toDate,
+        pages,
+        size,
+      })
+      summary.push({ category, ...counts, total: await countPrecedents(category) })
+
+      // Be polite to a government service between categories too.
+      await sleep(3000)
     }
-    console.log(`  category id ${categoryId}`)
-
-    const counts = await ingestCategory({
-      category,
-      categoryId,
-      commissionId,
-      commissionLabel,
-      fromDate,
-      toDate,
-      pages,
-      size,
-    })
-    summary.push({ category, ...counts, total: await countPrecedents(category) })
-
-    // Be polite to a government service between categories too.
-    await sleep(3000)
   }
 
   console.log('\n=== summary ===')

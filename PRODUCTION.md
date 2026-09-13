@@ -61,71 +61,103 @@ footer can claim. I am not able to answer this and you should not guess at it.
 
 ---
 
-## 1. Corpus — 419 → 1,000 cases
+## 1. Corpus — measure, then scale to 1,000 per category
 
-Precedent quality is currently limited by corpus size, not by matching. Measured:
-`q=defective goods washing machine` returns `[]`, meaning **no washing-machine
-judgment exists in the corpus at all**. That is why an appliance complaint draws
-car judgments.
+Goal: 1,000 judgements for each of the six categories in `categories.ts`
+(DEFECTIVE GOODS, SERVICE DEFICIENCY, UNFAIR TRADE, AUTOMOBILES, ELECTRICAL &
+ELECTRONIC GOODS, HOUSE HOLD GOODS) — 6,000 rows.
 
-Current distribution:
+**Three of the six cannot reach 1,000 at NCDRC.** Measured over 2015–2026,
+asking for 50: AUTOMOBILES returned **14**, ELECTRICAL & ELECTRONIC GOODS
+returned **4**, HOUSE HOLD GOODS returned **3**. That is the data, not a page
+limit. NCDRC is the national appellate commission hearing a few thousand cases a
+year across every category; the volume is at State and District level.
 
-| Category | Rows |
-|---|---|
-| DEFECTIVE GOODS | 62 |
-| SERVICE DEFICIENCY | 50 |
-| UNFAIR TRADE | 50 |
-| MEDICAL / BANKING / AIRLINES / ELECTRICITY | 50 each |
-| TELECOM | 36 |
-| AUTOMOBILES | 14 |
-| ELECTRICAL & ELECTRONIC GOODS | 4 |
-| HOUSE HOLD GOODS | 3 |
+### 1.1 The commissions are addressable
 
-The three statutory categories carry all seven grounds, so depth there is worth
-more than breadth elsewhere.
+Two undocumented GET endpoints, now wired into `ejagriti.ts`:
+
+- `getStateCommissionAndCircuitBench` → 55 State Commissions and benches
+- `getDistrictCommissionByCommissionId?commissionId=…` → districts under a state
+
+Ids are structured: `11000000` NCDRC, `11070000` Delhi State, `11070077`–
+`11070085` Delhi's ten District Commissions. Roughly 750 commissions in total.
+
+### 1.2 Measure first
+
+`--count` reports how many judgements exist without downloading any. It probes
+exponentially for an empty page then binary-searches the boundary, so a category
+of any size costs ~9 requests instead of one per page. Verified against
+simulated corpora from 0 to 9,999 records: 17/17 exact, 149 requests where
+linear paging would have taken 1,769.
 
 ```bash
-# From server/, via railway ssh (the public proxy is off).
-# ~20 pages x 30s per category, so run each separately.
-node dist/ingest.js --category "DEFECTIVE GOODS"   --pages 20 --from 2015-01-01
-node dist/ingest.js --category "SERVICE DEFICIENCY" --pages 20 --from 2015-01-01
-node dist/ingest.js --category "UNFAIR TRADE"       --pages 20 --from 2015-01-01
+# From server/, via railway ssh. No database needed — --count never writes.
+
+# 1. What does NCDRC actually hold? (~1 min)
+node dist/ingest.js --count --from 2010-01-01 \
+  --category "DEFECTIVE GOODS" --category "SERVICE DEFICIENCY" \
+  --category "UNFAIR TRADE" --category "AUTOMOBILES" \
+  --category "ELECTRICAL & ELECTRONIC GOODS" --category "HOUSE HOLD GOODS"
+
+# 2. Do State Commissions have the volume? Try the four largest first.
+node dist/ingest.js --count --from 2010-01-01 \
+  --commission-name MAHARASHTRA --commission-name "UTTAR PRADESH" \
+  --commission-name KARNATAKA --commission-name DELHI \
+  --category "HOUSE HOLD GOODS" --category "ELECTRICAL & ELECTRONIC GOODS"
+
+# 3. If states are still thin, check one state's districts.
+node dist/ingest.js --count --from 2010-01-01 --districts-of KARNATAKA \
+  --category "HOUSE HOLD GOODS"
+
+# Browse what's available
+node dist/ingest.js --list-commissions
+node dist/ingest.js --list-commissions maha
 ```
 
-That targets ~200 each (+440), landing near 900. Top up with
-`ELECTRICAL & ELECTRONIC GOODS`, `HOUSE HOLD GOODS`, `AUTOMOBILES` and
-`CONSUMER DURABLES` — all small, but they are the categories closest to what your
-users actually buy.
+Note the wider `--from 2010-01-01`: the 4-and-3 result was measured from 2015,
+and the window itself may be part of the ceiling. The count output ends with an
+estimate of how long ingesting everything found would take.
 
-Before running, check two things:
+### 1.3 Then decide the target
 
-- **Volume headroom.** Each judgment stores full extracted text. 1,000 rows is
-  roughly 50–100 MB. Railway → Postgres → Metrics. The database is currently
-  tiny, so this is a check, not a worry.
-- **Re-running is safe.** `upsertPrecedent` is `ON CONFLICT DO UPDATE`, so
-  overlapping pages update rather than duplicate.
+The survey answers a question that can't be answered from a desk: whether
+1,000 per category is reachable from State Commissions alone, or needs
+District Commissions.
 
-**Effort:** ~2 hours mostly waiting.
+That distinction matters for more than volume. State decisions are appellate and
+reasoned, closest in quality to the NCDRC judgements already in the corpus.
+District decisions are first-instance, often short, not binding, and variable —
+fine as "a comparable case", weaker to lean on in a notice. If districts turn
+out to be necessary, consider storing the commission tier and ranking State and
+NCDRC judgements above District ones rather than mixing them flat.
 
-### 1.1 Then re-tune relevance
+### 1.4 What a 6,000-row ingest needs that the script doesn't have yet
 
-Once the corpus is deeper, `PRECEDENT_MIN_RANK` (default 0.05) should be
-re-checked — a bigger corpus means more weak matches clear a fixed floor. Test
-with the API directly rather than through the UI:
+Do not start a run this size without these. At ~33s per page of 10, 6,000 rows
+is roughly 600 fetches — **5–6 hours of continuous requests** against a
+government service.
 
-```
-/api/precedents?grounds=defective_goods&q=Defective+goods
-```
+- **Resumability.** A run that dies at hour four currently restarts from page 0.
+  `upsertPrecedent` makes re-ingesting harmless, but re-*fetching* is the
+  expensive part. Needs a progress table keyed by (commission, category, page).
+- **Request timeouts.** `getJson` has no `AbortController`; one hung request
+  stalls the run indefinitely.
+- **Throttling and scheduling.** Spread across nights rather than one long
+  burst. The `User-Agent` already identifies us — keep it accurate.
+- **Storage headroom.** 6,000 judgements of full extracted text plus `raw_meta`
+  JSONB is roughly 300–600 MB. Check the Railway volume before starting, and
+  consider dropping `raw_meta` — nothing reads it.
+- **Retrieval re-tuning.** `PRECEDENT_MIN_RANK` (0.05) was set against 419 rows.
+  At 6,000 more weak matches clear a fixed floor, so re-check after loading.
 
-### 1.2 The real relevance fix (post-launch)
+### 1.5 The deeper fix
 
-Retrieval currently keys off the statutory ground alone, which is why a washing
-machine and a car land in the same bucket. The better design selects categories —
-or ranks — using the goods described in the intake. That needs a product-type
-field at intake, or extraction from the narrative. Meaningful work; not a
-launch blocker.
-
----
+Retrieval keys off the statutory ground alone, which is why a washing machine and
+a car land in the same bucket. Proof: `q=defective goods washing machine` returns
+`[]` — there is no washing-machine judgment in the corpus at all. More rows will
+help, but the structural answer is selecting or ranking on the goods described at
+intake. That needs a product-type field or extraction from the narrative.
 
 ## 2. Payments
 
