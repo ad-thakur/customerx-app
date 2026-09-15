@@ -10,7 +10,7 @@ import type { GroundId, IntakeData, RoutingResult } from './types'
 // on a user-advanceable demo clock.
 // ---------------------------------------------------------------------------
 
-const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+const API = (import.meta.env?.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
 export const MILESTONES = {
   emailDelivered: 1,
@@ -238,6 +238,19 @@ export const recordNoticeDispatch = (
   postId?: string,
 ) => caseAction(id, 'notice', { methods, postId })
 
+/**
+ * Persists the notice-specifics gathered in the post-intake pop-up (the exact
+ * goods, invoice number, mode of payment, representations, how the grievance
+ * was raised, the parties' addresses). The server merges these into the case's
+ * intake; only a whitelisted set of fields is accepted. Refused once dispatched.
+ */
+export const saveIntakeGaps = (id: string, patch: Partial<IntakeData>) =>
+  request<CaseView>(
+    `/api/cases/${id}/intake`,
+    { method: 'PUT', body: JSON.stringify(patch) },
+    getToken(id),
+  )
+
 /** Persists edits to the notice draft. Safe to call repeatedly. */
 export const saveNoticeDraft = (id: string, edits: Record<string, string>) =>
   request<CaseView>(
@@ -245,6 +258,35 @@ export const saveNoticeDraft = (id: string, edits: Record<string, string>) =>
     { method: 'PUT', body: JSON.stringify({ edits }) },
     getToken(id),
   )
+
+/** A block the AI proposes to fill in, for the user to accept or discard. */
+export interface NoticeFillSuggestion {
+  id: string
+  text: string
+}
+
+/**
+ * Asks the AI to fill the [BRACKETED] gaps in the given blocks from the case's
+ * own inputs. Advisory only — the caller decides what to accept. `aiDisabled`
+ * is true when the server has no model configured.
+ */
+export const aiFillNotice = (id: string, blocks: { id: string; text: string; hint?: string }[]) =>
+  request<{ suggestions: NoticeFillSuggestion[]; aiDisabled?: boolean }>(
+    `/api/cases/${id}/notice/ai-fill`,
+    { method: 'POST', body: JSON.stringify({ blocks }) },
+    getToken(id),
+  )
+
+/** Asks the AI to restate a selected passage. Returns wording variants only. */
+export const aiRewordNotice = (id: string, text: string, instruction?: string) =>
+  request<{ variants: string[]; aiDisabled?: boolean }>(
+    `/api/cases/${id}/notice/ai-reword`,
+    { method: 'POST', body: JSON.stringify({ text, instruction }) },
+    getToken(id),
+  )
+
+/** Server capabilities — currently just whether the AI drafting layer is on. */
+export const getApiHealth = () => request<{ ok: boolean; ai: boolean }>('/api/health')
 export const advanceCase = (id: string) => caseAction(id, 'advance')
 export const acceptOffer = (id: string) => caseAction(id, 'accept')
 export const setLedgerConsent = (id: string, consent: boolean) =>

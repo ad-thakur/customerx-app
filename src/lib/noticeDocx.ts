@@ -108,6 +108,8 @@ function blockToXml(b: NoticeBlock): string {
       return para(b.text, { bold: true, spaceBefore: 360, spaceAfter: 160 })
     case 'annexure':
       return para(body, { spaceAfter: 100, indentLeft: 425, hanging: 425 })
+    case 'dispatch':
+      return para(b.text, { italic: true, size: 18, align: 'both', spaceBefore: 360, spaceAfter: 120 })
     default:
       return para(b.text)
   }

@@ -82,12 +82,19 @@ export async function countCases(): Promise<number> {
 export async function patchCase(
   id: string,
   patch: Partial<
-    Pick<CaseRecord, 'clockOffsetDays' | 'assessment' | 'noticeDraft' | 'notice' | 'resolution'>
+    Pick<
+      CaseRecord,
+      'intake' | 'clockOffsetDays' | 'assessment' | 'noticeDraft' | 'notice' | 'resolution'
+    >
   >,
 ): Promise<CaseRecord | null> {
   const sets: string[] = []
   const values: unknown[] = []
   let i = 1
+  if (patch.intake !== undefined) {
+    sets.push(`intake = $${i++}`)
+    values.push(JSON.stringify(patch.intake))
+  }
   if (patch.clockOffsetDays !== undefined) {
     sets.push(`clock_offset_days = $${i++}`)
     values.push(patch.clockOffsetDays)

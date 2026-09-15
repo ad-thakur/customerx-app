@@ -305,6 +305,48 @@ app.put('/api/cases/:id/notice-draft', async (req, res) => {
   }
 })
 
+// The notice-specifics gathered in the pop-up after intake (the exact goods,
+// invoice number, mode of payment, representations, how the grievance was
+// raised, the parties' addresses). Only these fields may be patched, and only
+// while the notice is still a draft — a dispatched notice is fixed.
+const GAP_FIELDS = [
+  'itemDescription',
+  'invoiceNo',
+  'paymentMode',
+  'representations',
+  'grievanceMode',
+  'grievanceRef',
+  'addressLine',
+  'pincode',
+  'city',
+  'state',
+  'companyAddress',
+  'companyEmail',
+] as const
+
+app.put('/api/cases/:id/intake', async (req, res) => {
+  try {
+    const record = await authedCase(req, res)
+    if (!record) return
+    if (record.notice) {
+      res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
+      return
+    }
+    const raw = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, string> = {}
+    for (const key of GAP_FIELDS) {
+      const v = raw[key]
+      if (typeof v === 'string') patch[key] = v.slice(0, 2000)
+    }
+    const intake = { ...record.intake, ...patch }
+    const updated = await patchCase(record.id, { intake: stripEvidenceData(intake) })
+    res.json(toView(updated!))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not save your details' })
+  }
+})
+
 // AI drafting help for the notice — both are advisory only. The endpoints
 // return suggestions the frontend shows for the user to accept or discard;
 // nothing here writes to the notice. If no ANTHROPIC_API_KEY is set they answer
