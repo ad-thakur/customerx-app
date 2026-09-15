@@ -77,10 +77,26 @@ export const GROUND_CATEGORIES: Record<GroundId, CategoryRef[]> = {
     { name: 'AUTOMOBILES', id: 29 },
   ],
 
-  // s.2(11) has an exact counterpart at id 20. Kept to that rather than the
-  // sector categories: a deficiency case is more like another deficiency case
-  // than it is like anything else in the same industry.
-  deficient_service: [{ name: 'SERVICE DEFICIENCY', id: 20 }],
+  // s.2(11) deficiency in service. e-Jagriti has an exact counterpart at id 20,
+  // but in practice most deficiency cases are filed under the *sector* they
+  // arose in (a bank complaint under BANKING, a flight under AIRLINES), not a
+  // generic bucket. This mapping used to keep to id 20 alone to stay narrow.
+  //
+  // That is now reversed on purpose. Retrieval ranks results closest-first by
+  // the case's own product/service (see searchLocalPrecedents), so an airline
+  // complaint surfaces airline cases first, a bank complaint bank cases first,
+  // and only then more distant sectors ("and so forth"). Ranking, not a narrow
+  // category list, does the relevance work here — so the populated
+  // deficiency-in-service sectors are included in scope rather than excluded.
+  // All are --probe-confirmed to have NCDRC cases.
+  deficient_service: [
+    { name: 'SERVICE DEFICIENCY', id: 20 },
+    { name: 'AIRLINES', id: 10 },
+    { name: 'BANKING', id: 8 },
+    { name: 'MEDICAL', id: 1 },
+    { name: 'TELECOM', id: 9 },
+    { name: 'ELECTRICITY', id: 6 },
+  ],
 
   unfair_trade_practice: [{ name: 'UNFAIR TRADE', id: 21 }],
 

@@ -191,6 +191,13 @@ export type PrecedentHit = Pick<
  * which is how a washing-machine complaint used to surface agricultural
  * disputes (AGRICULTURE is a populated NCDRC category).
  *
+ * Ordering within the in-scope categories is closest-first: results are ranked
+ * by how much of the query's product/service vocabulary each judgment matches,
+ * so a case about the same product surfaces above one about a merely related
+ * product, above a generic same-ground case. See the `q` CTE below for how the
+ * match is loosened from "every term" to "any term, ranked" to make that
+ * gradient possible.
+ *
  * Returns an empty array — deliberately, not a filler set — when the query has
  * no discriminating terms or nothing clears MIN_RANK. Callers should render
  * "No similar cases have been filed." rather than showing weak matches, since
@@ -210,7 +217,16 @@ export async function searchLocalPrecedents(
 
   const res = await pool.query(
     `
-    WITH q AS (SELECT plainto_tsquery('english', $1) AS tsq)
+    -- plainto_tsquery ANDs every term ('wash' & 'machin' & 'defect'), so a
+    -- multi-word product description would match almost nothing. Swapping the
+    -- '&'s for '|'s turns it into an OR query built from the same stemmed,
+    -- stopword-free lexemes, so a judgment that matches only part of the
+    -- description still appears — just lower down. ts_rank then orders matches
+    -- from the closest product/service to the most distant. The category
+    -- restriction below is still what keeps genuinely unrelated cases out.
+    WITH q AS (
+      SELECT replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery AS tsq
+    )
     SELECT case_number AS "caseNumber",
            complainant,
            respondent,

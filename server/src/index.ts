@@ -13,7 +13,7 @@ import {
   readGrounds,
   toView,
 } from './caseLogic.js'
-import { generateAiAssessment } from './ai.js'
+import { fillNoticeGaps, generateAiAssessment, rewordNoticeText } from './ai.js'
 import { initPrecedentTable, searchLocalPrecedents } from './precedentStore.js'
 import { categoriesForGrounds, isGroundId } from './categories.js'
 import {
@@ -244,13 +244,19 @@ app.post('/api/cases/:id/pay', async (req, res) => {
 
     const rules = buildRulesAssessment(record)
 
-    // Retrieve precedents on the statutory grounds only (never the narrative
-    // verbatim to a third party), then let the AI layer rank/annotate them.
+    // Retrieve precedents for the statutory grounds, ranked closest-first by the
+    // case's own product/service. The narrative is used only to rank against the
+    // LOCAL corpus (precedent_cases) — it is never sent to a third-party
+    // precedent source. Categories keep results on-ground; the narrative orders
+    // them so the nearest product/service comes first. The AI layer then
+    // annotates them.
     let precedents: Awaited<ReturnType<typeof localPrecedentResults>> = []
     try {
       const grounds = readGrounds(record.intake)
+      const subject = (record.intake.narrative ?? '').trim()
+      const groundWords = grounds.map((g) => GROUND_LABELS[g]).join(' ')
       precedents = await localPrecedentResults(
-        grounds.map((g) => GROUND_LABELS[g]).join(' '),
+        subject ? `${subject} ${groundWords}` : groundWords,
         categoriesForGrounds(grounds),
       )
     } catch {
@@ -296,6 +302,70 @@ app.put('/api/cases/:id/notice-draft', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Could not save your changes' })
+  }
+})
+
+// AI drafting help for the notice — both are advisory only. The endpoints
+// return suggestions the frontend shows for the user to accept or discard;
+// nothing here writes to the notice. If no ANTHROPIC_API_KEY is set they answer
+// { aiDisabled: true } and the frontend hides the buttons. Refused once the
+// notice is dispatched (the document is then fixed).
+app.post('/api/cases/:id/notice/ai-fill', async (req, res) => {
+  try {
+    const record = await authedCase(req, res)
+    if (!record) return
+    if (record.notice) {
+      res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
+      return
+    }
+    if (!process.env.ANTHROPIC_API_KEY) {
+      res.json({ aiDisabled: true, suggestions: [] })
+      return
+    }
+    const raw = (req.body as { blocks?: unknown }).blocks
+    const blocks = (Array.isArray(raw) ? raw : [])
+      .filter((b): b is { id: string; text: string; hint?: string } =>
+        Boolean(b) && typeof (b as { id?: unknown }).id === 'string' &&
+        typeof (b as { text?: unknown }).text === 'string',
+      )
+      .slice(0, 40)
+      .map((b) => ({
+        id: b.id.slice(0, 64),
+        text: b.text.slice(0, 8000),
+        hint: typeof b.hint === 'string' ? b.hint.slice(0, 500) : undefined,
+      }))
+    const suggestions = await fillNoticeGaps(record, blocks)
+    res.json({ suggestions })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not draft suggestions just now' })
+  }
+})
+
+app.post('/api/cases/:id/notice/ai-reword', async (req, res) => {
+  try {
+    const record = await authedCase(req, res)
+    if (!record) return
+    if (record.notice) {
+      res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
+      return
+    }
+    if (!process.env.ANTHROPIC_API_KEY) {
+      res.json({ aiDisabled: true, variants: [] })
+      return
+    }
+    const body = req.body as { text?: unknown; instruction?: unknown }
+    const text = typeof body.text === 'string' ? body.text.slice(0, 4000) : ''
+    if (!text.trim()) {
+      res.status(400).json({ error: 'Nothing to reword' })
+      return
+    }
+    const instruction = typeof body.instruction === 'string' ? body.instruction : undefined
+    const variants = await rewordNoticeText(record, text, instruction)
+    res.json({ variants })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not reword that just now' })
   }
 })
 
