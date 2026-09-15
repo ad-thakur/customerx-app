@@ -129,11 +129,49 @@ function isoDaysAgo(days: number): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * e-Jagriti's `judgmentOrderDocumentBase64` is misnamed: for some cases it is a
+ * base64-encoded PDF, but for most it is a raw HTML fragment holding the order
+ * text. Convert that HTML to plain text.
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    // Turn block-level tag ends into line breaks so the text keeps its shape.
+    .replace(/<\/(p|div|tr|h[1-6]|li)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 async function extractJudgmentText(rec: EJagritiCaseRecord): Promise<string | null> {
-  const b64 = rec.judgmentOrderDocumentBase64
-  if (!b64) return null
+  const raw = rec.judgmentOrderDocumentBase64
+  if (!raw) return null
+
+  // Two formats come back under the same field. A base64 PDF begins "JVBERi"
+  // ("%PDF" encoded); an HTML fragment begins with a tag.
+  const head = raw.trimStart().slice(0, 20).toLowerCase()
+  const looksHtml = head.startsWith('<')
+
+  if (looksHtml) {
+    const text = htmlToText(raw)
+    if (text.length > 0) return text
+    console.warn(`  ! empty HTML order for ${rec.caseNumber}`)
+    return null
+  }
+
   try {
-    const parsed = await pdfParse(Buffer.from(b64, 'base64'))
+    const parsed = await pdfParse(Buffer.from(raw, 'base64'))
     const text = parsed.text?.replace(/\s+\n/g, '\n').trim()
     return text && text.length > 0 ? text : null
   } catch (err) {
@@ -306,23 +344,29 @@ async function ingestCategory(o: IngestOptions): Promise<{ inserted: number; upd
     for (const rec of records) {
       const text = await extractJudgmentText(rec)
       const { judgmentOrderDocumentBase64: _pdf, ...meta } = rec
-      const result = await upsertPrecedent({
-        caseNumber: rec.caseNumber,
-        commission: commissionLabel,
-        category,
-        complainant: rec.complainantName,
-        respondent: rec.respondentName,
-        complainantAdvocate: rec.complainantAdvocateName,
-        respondentAdvocate: rec.respondentAdvocateName,
-        filingDate: rec.caseFilingDate,
-        disposalDate: rec.dateOfDisposal,
-        judgmentDate: rec.judgemtmentDate,
-        outcome: rec.caseStageName,
-        judgmentText: text,
-        rawMeta: meta,
-      })
-      result === 'inserted' ? inserted++ : updated++
-      console.log(`  ${result === 'inserted' ? '+' : '~'} ${rec.caseNumber} — ${rec.caseStageName ?? 'stage unknown'}${text ? ` (${text.length.toLocaleString()} chars of judgment text)` : ' (no judgment PDF)'}`)
+      // One bad row (DB constraint, oversized field, transient write error) must
+      // not abandon the rest of the page — log it and move on.
+      try {
+        const result = await upsertPrecedent({
+          caseNumber: rec.caseNumber,
+          commission: commissionLabel,
+          category,
+          complainant: rec.complainantName,
+          respondent: rec.respondentName,
+          complainantAdvocate: rec.complainantAdvocateName,
+          respondentAdvocate: rec.respondentAdvocateName,
+          filingDate: rec.caseFilingDate,
+          disposalDate: rec.dateOfDisposal,
+          judgmentDate: rec.judgemtmentDate,
+          outcome: rec.caseStageName,
+          judgmentText: text,
+          rawMeta: meta,
+        })
+        result === 'inserted' ? inserted++ : updated++
+        console.log(`  ${result === 'inserted' ? '+' : '~'} ${rec.caseNumber} — ${rec.caseStageName ?? 'stage unknown'}${text ? ` (${text.length.toLocaleString()} chars of judgment text)` : ' (no judgment PDF)'}`)
+      } catch (err) {
+        console.error(`  ! failed to save ${rec.caseNumber}: ${(err as Error).message}`)
+      }
     }
 
     // Be polite to a government service.

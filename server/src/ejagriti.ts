@@ -64,16 +64,72 @@ const HEADERS = {
   'User-Agent': 'ConsumerX-ingest/0.1 (precedent research; contact: adnaan@thakur.com)',
 }
 
-async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...HEADERS, ...init?.headers } })
+/** Abandon a single request that stalls: e-Jagriti can hold a connection open forever. */
+const REQUEST_TIMEOUT_MS = 90_000
+
+/** Backoff waits before each retry. Length also sets the number of retries. */
+const RETRY_DELAYS_MS = [2_000, 8_000, 30_000]
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** A non-2xx HTTP response. `status` lets the retry logic tell 5xx from 4xx. */
+class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
+
+/** An error carried in the response body (HTTP 200 but `error` set). Never retried. */
+class EJagritiApiError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EJagritiApiError'
+  }
+}
+
+/**
+ * Retry only transient failures:
+ *  - 5xx responses (server-side, likely to clear)
+ *  - network failures and request timeouts (fetch throws TypeError / an
+ *    AbortSignal.timeout DOMException — neither is one of our own error types)
+ * Never retry a 4xx (our request is wrong) or an e-Jagriti body error.
+ */
+function isRetryable(err: unknown): boolean {
+  if (err instanceof EJagritiApiError) return false
+  if (err instanceof HttpError) return err.status >= 500 && err.status < 600
+  return true
+}
+
+async function getJsonOnce<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    headers: { ...HEADERS, ...init?.headers },
+  })
   if (!res.ok) {
-    throw new Error(`e-Jagriti request failed: ${res.status} ${res.statusText} (${path})`)
+    throw new HttpError(res.status, `e-Jagriti request failed: ${res.status} ${res.statusText} (${path})`)
   }
   const body = (await res.json()) as EJagritiEnvelope<T>
   if (body.error && body.error !== 'false') {
-    throw new Error(`e-Jagriti API error on ${path}: ${body.message}`)
+    throw new EJagritiApiError(`e-Jagriti API error on ${path}: ${body.message}`)
   }
   return body.data
+}
+
+async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getJsonOnce<T>(path, init)
+    } catch (err) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isRetryable(err)) throw err
+      const wait = RETRY_DELAYS_MS[attempt]
+      console.warn(
+        `  ! ${path} failed (${(err as Error).message}); retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${wait / 1000}s`,
+      )
+      await sleep(wait)
+    }
+  }
 }
 
 export async function fetchCaseCategories(): Promise<EJagritiCaseCategory[]> {
