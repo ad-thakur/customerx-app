@@ -52,7 +52,12 @@ import {
   searchCasesByCategory,
   type EJagritiCaseRecord,
 } from './ejagriti.js'
-import { GROUND_CATEGORIES, isGroundId, type CategoryRef } from './categories.js'
+import {
+  GROUND_CATEGORIES,
+  isGroundId,
+  crossReferenceCategories,
+  type CategoryRef,
+} from './categories.js'
 import {
   initPrecedentTable,
   upsertPrecedent,
@@ -361,6 +366,7 @@ async function ingestCategory(o: IngestOptions): Promise<{ inserted: number; upd
           outcome: rec.caseStageName,
           judgmentText: text,
           rawMeta: meta,
+          relatedCategories: crossReferenceCategories(text, category),
         })
         result === 'inserted' ? inserted++ : updated++
         console.log(`  ${result === 'inserted' ? '+' : '~'} ${rec.caseNumber} — ${rec.caseStageName ?? 'stage unknown'}${text ? ` (${text.length.toLocaleString()} chars of judgment text)` : ' (no judgment PDF)'}`)

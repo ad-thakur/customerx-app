@@ -22,6 +22,11 @@ export interface PrecedentCase {
   outcome: string | null
   judgmentText: string | null
   rawMeta: unknown
+  /**
+   * Canonical categories for *other* grounds this case also turns on, so it can
+   * be found when users search those categories. See crossReferenceCategories().
+   */
+  relatedCategories: string[]
 }
 
 export async function initPrecedentTable(): Promise<void> {
@@ -40,11 +45,22 @@ export async function initPrecedentTable(): Promise<void> {
       outcome TEXT,
       judgment_text TEXT,
       raw_meta JSONB,
+      related_categories TEXT[] NOT NULL DEFAULT '{}',
       ingested_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `)
+  // Migrate tables created before related_categories existed.
+  await pool.query(`
+    ALTER TABLE precedent_cases
+      ADD COLUMN IF NOT EXISTS related_categories TEXT[] NOT NULL DEFAULT '{}'
+  `)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS precedent_cases_category_idx ON precedent_cases (category)
+  `)
+  // Supports the array-overlap (&&) used to widen search to cross-referenced cases.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS precedent_cases_related_idx
+      ON precedent_cases USING GIN (related_categories)
   `)
   // Full-text index over the judgment body for later "similar cases" lookups.
   await pool.query(`
@@ -61,14 +77,20 @@ export async function upsertPrecedent(p: PrecedentCase): Promise<'inserted' | 'u
       case_number, commission, category, complainant, respondent,
       complainant_advocate, respondent_advocate,
       filing_date, disposal_date, judgment_date,
-      outcome, judgment_text, raw_meta
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      outcome, judgment_text, raw_meta, related_categories
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     ON CONFLICT (case_number) DO UPDATE SET
       outcome = EXCLUDED.outcome,
       disposal_date = EXCLUDED.disposal_date,
       judgment_date = EXCLUDED.judgment_date,
       judgment_text = COALESCE(EXCLUDED.judgment_text, precedent_cases.judgment_text),
       raw_meta = EXCLUDED.raw_meta,
+      -- related_categories is derived from judgment_text; only refresh it when
+      -- this ingest actually has text, so a text-less re-fetch can't wipe tags.
+      related_categories = CASE
+        WHEN EXCLUDED.judgment_text IS NOT NULL THEN EXCLUDED.related_categories
+        ELSE precedent_cases.related_categories
+      END,
       ingested_at = now()
     RETURNING (xmax = 0) AS inserted
     `,
@@ -86,6 +108,7 @@ export async function upsertPrecedent(p: PrecedentCase): Promise<'inserted' | 'u
       p.outcome,
       p.judgmentText,
       JSON.stringify(p.rawMeta),
+      p.relatedCategories,
     ],
   )
   return res.rows[0].inserted ? 'inserted' : 'updated'
@@ -239,7 +262,10 @@ export async function searchLocalPrecedents(
     FROM precedent_cases, q
     WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
       AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= $2
-      AND ($4::text[] IS NULL OR category = ANY($4::text[]))
+      -- In scope if filed under a requested category OR cross-referenced to one
+      -- (e.g. an unfair-trade case that also turns on defective goods shows up
+      -- when searching defective goods).
+      AND ($4::text[] IS NULL OR category = ANY($4::text[]) OR related_categories && $4::text[])
     ORDER BY rank DESC
     LIMIT $3
     `,

@@ -144,3 +144,59 @@ export function allCategories(): CategoryRef[] {
 export function isGroundId(value: string): value is GroundId {
   return Object.prototype.hasOwnProperty.call(GROUND_CATEGORIES, value)
 }
+
+// ---------------------------------------------------------------------------
+// Cross-referencing
+//
+// A case is filed under one category, but a single complaint often turns on
+// more than one ground — an unfair-trade case that also complains of a
+// defective product, or a defective-goods case pleaded as deficiency in
+// service. We scan the judgment text for the other grounds and tag the case
+// with a canonical category for each, so searching one category can still
+// surface a case filed under another. These tags are stored in
+// precedent_cases.related_categories and OR'd into the search scope.
+//
+// The tag for each ground is its most representative category name, so it
+// overlaps with what categoriesForGrounds() returns for that ground:
+//   defective_goods       → 'DEFECTIVE GOODS'
+//   deficient_service     → 'SERVICE DEFICIENCY'
+//   unfair_trade_practice → 'UNFAIR TRADE'
+//
+// The unfair-trade tag matters for reach: NCDRC's dedicated UNFAIR TRADE
+// category holds only ~65 cases, but the practice is routinely pleaded
+// alongside a defect or a deficiency, so many more cases across other
+// categories genuinely involve it. Tagging them makes those reachable from an
+// unfair-trade search.
+// ---------------------------------------------------------------------------
+
+const CROSSREF_GOODS = 'DEFECTIVE GOODS'
+const CROSSREF_SERVICE = 'SERVICE DEFICIENCY'
+const CROSSREF_UTP = 'UNFAIR TRADE'
+
+// Deliberately phrase-based, not single words: "defect"/"service"/"trade" alone
+// appear in almost every consumer judgment. We look for the way each ground is
+// actually pleaded so the tags stay meaningful.
+const GOODS_SIGNAL =
+  /manufactur\w*\s+defect|defective\s+(goods?|product|article|vehicle|car|unit|item|machine)|defect\s+in\s+the\s+(goods?|product|vehicle|car|machine|unit|article)|inherent\s+defect|goods?\s+(were|was|are|is)\s+defective/i
+const SERVICE_SIGNAL =
+  /deficien\w*\s+(in|of)\s+servic|deficient\s+servic|negligen\w*\s+(in|during)\s+(treatment|service|servic)/i
+const UTP_SIGNAL =
+  /unfair\s+trade\s+practic|restrictive\s+trade\s+practic|misleading\s+(advertis|representation)|false\s+(representation|promise|claim)|deceptive\s+practic/i
+
+/**
+ * Which *other* grounds' canonical categories a judgment also covers, by its
+ * text. Returns [] when none apply. The case's own category is never returned,
+ * so a DEFECTIVE GOODS case is not tagged as also being defective goods.
+ */
+export function crossReferenceCategories(
+  text: string | null | undefined,
+  primaryCategory: string,
+): string[] {
+  if (!text) return []
+  const tags = new Set<string>()
+  if (GOODS_SIGNAL.test(text)) tags.add(CROSSREF_GOODS)
+  if (SERVICE_SIGNAL.test(text)) tags.add(CROSSREF_SERVICE)
+  if (UTP_SIGNAL.test(text)) tags.add(CROSSREF_UTP)
+  tags.delete(primaryCategory)
+  return [...tags]
+}
