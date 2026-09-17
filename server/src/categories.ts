@@ -123,11 +123,19 @@ export const GROUND_CATEGORIES: Record<GroundId, CategoryRef[]> = {
   misleading_ad: [{ name: 'UNFAIR TRADE', id: 21 }],
 }
 
-/** Category names to search for a set of grounds, de-duplicated. */
+/**
+ * Search scope for a set of grounds, de-duplicated: the e-Jagriti categories the
+ * grounds map to, plus the ground marker for any of 2(6)(d)–(g). The markers
+ * only ever appear in a case's related_categories, so including them here lets a
+ * search for, say, overcharging reach an overcharging-tagged case filed under
+ * any category — without narrowing the categories it already searched.
+ */
 export function categoriesForGrounds(grounds: GroundId[]): string[] {
   const out = new Set<string>()
   for (const g of grounds) {
     for (const c of GROUND_CATEGORIES[g] ?? []) out.add(c.name)
+    const marker = GROUND_MARKERS[g]
+    if (marker) out.add(marker)
   }
   return [...out]
 }
@@ -173,9 +181,26 @@ const CROSSREF_GOODS = 'DEFECTIVE GOODS'
 const CROSSREF_SERVICE = 'SERVICE DEFICIENCY'
 const CROSSREF_UTP = 'UNFAIR TRADE'
 
-// Deliberately phrase-based, not single words: "defect"/"service"/"trade" alone
-// appear in almost every consumer judgment. We look for the way each ground is
-// actually pleaded so the tags stay meaningful.
+/**
+ * Markers for grounds that have NO dedicated e-Jagriti category of their own —
+ * they are pleaded inside UNFAIR TRADE or DEFECTIVE GOODS. Tagging a case with
+ * the marker for each such ground its judgment turns on, and adding that marker
+ * to the ground's search scope (see categoriesForGrounds), makes these grounds
+ * searchable across whatever category the case happened to be filed under.
+ *
+ * These are the statutory heads Section 2(6)(d)–(g): overcharging, spurious
+ * goods, hazardous goods, and misleading advertisement.
+ */
+export const GROUND_MARKERS: Partial<Record<GroundId, string>> = {
+  overcharging: 'OVERCHARGING',
+  spurious_goods: 'SPURIOUS GOODS',
+  hazardous_goods: 'HAZARDOUS GOODS',
+  misleading_ad: 'MISLEADING ADVERTISEMENT',
+}
+
+// Deliberately phrase-based, not single words: "defect"/"service"/"trade"/
+// "price" alone appear in almost every consumer judgment. We look for the way
+// each ground is actually pleaded so the tags stay meaningful.
 const GOODS_SIGNAL =
   /manufactur\w*\s+defect|defective\s+(goods?|product|article|vehicle|car|unit|item|machine)|defect\s+in\s+the\s+(goods?|product|vehicle|car|machine|unit|article)|inherent\s+defect|goods?\s+(were|was|are|is)\s+defective/i
 const SERVICE_SIGNAL =
@@ -183,10 +208,23 @@ const SERVICE_SIGNAL =
 const UTP_SIGNAL =
   /unfair\s+trade\s+practic|restrictive\s+trade\s+practic|misleading\s+(advertis|representation)|false\s+(representation|promise|claim)|deceptive\s+practic/i
 
+// 2(6)(d)–(g). Tighter than the three above because these grounds are being
+// counted, not just cross-linked — a loose match would inflate the totals.
+const OVERCHARGING_SIGNAL =
+  /overcharg|over-charg|in excess of the (price|m\.?r\.?p|maximum retail|rate|tariff|amount fixed)|(charged|realis\w+|collect\w+|recover\w+)\s+(a\s+)?(price|amount|sum)?\s*in excess|excess\s+(price|amount|charge|realis)|(above|over|exceed\w*)\s+the\s+m\.?r\.?p/i
+const SPURIOUS_SIGNAL =
+  /spurious goods?|counterfeit|passing[- ]off|sold as genuine|goods?\s+(found|were|are|is|was)\s+(to be\s+)?(spurious|counterfeit|fake|not genuine)|fake\s+(product|goods|article)/i
+const HAZARDOUS_SIGNAL =
+  /hazardous to (life|life and safety|the public)|unsafe (goods|product|to the public|when used)|contravention of .{0,25}safety standard|dangerous (goods|product|to life)/i
+const MISLEADING_AD_SIGNAL =
+  /misleading advertis|false advertis|deceptive advertis|(misleading|false|deceptive)\s+(representation|statement|claim)\s+.{0,25}advertis|advertis\w+\s+.{0,30}(false|misleading|deceptive)/i
+
 /**
- * Which *other* grounds' canonical categories a judgment also covers, by its
- * text. Returns [] when none apply. The case's own category is never returned,
- * so a DEFECTIVE GOODS case is not tagged as also being defective goods.
+ * Which *other* grounds a judgment also turns on, by its text — returned as
+ * category names (for grounds that map to a category) or ground markers (for
+ * 2(6)(d)–(g), which do not). Returns [] when none apply. The case's own
+ * category is never returned, so a DEFECTIVE GOODS case is not tagged as also
+ * being defective goods.
  */
 export function crossReferenceCategories(
   text: string | null | undefined,
@@ -197,6 +235,10 @@ export function crossReferenceCategories(
   if (GOODS_SIGNAL.test(text)) tags.add(CROSSREF_GOODS)
   if (SERVICE_SIGNAL.test(text)) tags.add(CROSSREF_SERVICE)
   if (UTP_SIGNAL.test(text)) tags.add(CROSSREF_UTP)
+  if (OVERCHARGING_SIGNAL.test(text)) tags.add(GROUND_MARKERS.overcharging!)
+  if (SPURIOUS_SIGNAL.test(text)) tags.add(GROUND_MARKERS.spurious_goods!)
+  if (HAZARDOUS_SIGNAL.test(text)) tags.add(GROUND_MARKERS.hazardous_goods!)
+  if (MISLEADING_AD_SIGNAL.test(text)) tags.add(GROUND_MARKERS.misleading_ad!)
   tags.delete(primaryCategory)
   return [...tags]
 }
