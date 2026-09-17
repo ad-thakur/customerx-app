@@ -7,7 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "ingest": "tsx src/ingest.ts"
+    "ingest": "tsx src/ingest.ts",
+    "ingest:built": "node dist/ingest.js",
+    "ingest:defg": "node dist/ingest.js --category \"DEFECTIVE GOODS\" --category \"ELECTRICAL & ELECTRONIC GOODS\" --category \"AUTOMOBILES\" --category \"HOUSE HOLD GOODS\" --category \"FOOD & BEVERAGES\" --category \"E-COMMERCE\" --category \"INDUSTRIAL/COMMERCIAL GOODS & SERVICES\" --category \"UNFAIR TRADE\" --category \"SERVICE DEFICIENCY\" --category \"MEDICAL\" --category \"INSURANCE\" --category \"BANKING\" --category \"TELECOM\" --category \"AIRLINES\" --category \"HOUSING\" --category \"ELECTRICITY\" --category \"TRANSPORT\" --category \"FINANCE\" --from 2010-01-01 --pages 30 --size 10"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
