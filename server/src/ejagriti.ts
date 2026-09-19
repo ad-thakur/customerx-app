@@ -64,16 +64,64 @@ const HEADERS = {
   'User-Agent': 'ConsumerX-ingest/0.1 (precedent research; contact: adnaan@thakur.com)',
 }
 
-async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...HEADERS, ...init?.headers } })
+/** Abandon a single request that stalls: e-Jagriti can hold a connection open indefinitely. */
+const REQUEST_TIMEOUT_MS = 90_000
+/** Backoff before each retry; the array length is also the retry count. */
+const RETRY_DELAYS_MS = [2_000, 8_000, 20_000]
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** A non-2xx HTTP response. `status` lets the retry logic tell a 5xx from a 4xx. */
+class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
+
+/** An error carried in the response body (HTTP 200 but `error` set). Never retried. */
+class EJagritiApiError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EJagritiApiError'
+  }
+}
+
+/**
+ * Retry only transient failures: 5xx responses, and network failures / request
+ * timeouts (fetch throws a TypeError / AbortSignal.timeout a DOMException —
+ * neither is one of our own error types). Never retry a 4xx or a body error.
+ */
+function isRetryable(err: unknown): boolean {
+  if (err instanceof EJagritiApiError) return false
+  if (err instanceof HttpError) return err.status >= 500 && err.status < 600
+  return true
+}
+
+async function getJsonOnce<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    headers: { ...HEADERS, ...init?.headers },
+  })
   if (!res.ok) {
-    throw new Error(`e-Jagriti request failed: ${res.status} ${res.statusText} (${path})`)
+    throw new HttpError(res.status, `e-Jagriti request failed: ${res.status} ${res.statusText} (${path})`)
   }
   const body = (await res.json()) as EJagritiEnvelope<T>
   if (body.error && body.error !== 'false') {
-    throw new Error(`e-Jagriti API error on ${path}: ${body.message}`)
+    throw new EJagritiApiError(`e-Jagriti API error on ${path}: ${body.message}`)
   }
   return body.data
+}
+
+async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getJsonOnce<T>(path, init)
+    } catch (err) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isRetryable(err)) throw err
+      await sleep(RETRY_DELAYS_MS[attempt])
+    }
+  }
 }
 
 export async function fetchCaseCategories(): Promise<EJagritiCaseCategory[]> {
@@ -244,6 +292,37 @@ export async function searchCasesByCategory(opts: SearchPageOptions): Promise<EJ
       serchType: 6,
       serchTypeValue: String(opts.categoryId),
       orderType: opts.orderType ?? 2,
+    }),
+  })
+}
+
+/**
+ * Fetch a single case by its full case number (serchType 1, e.g. "NC/RP/2322/2023").
+ *
+ * This matters for text recovery: the category search (serchType 6) returns the
+ * order for many older cases as a base64 PDF that won't parse, but the same case
+ * fetched by number comes back as an HTML fragment we can extract cleanly. The
+ * API still wants a disposal-date window, so pass the case's known disposal year
+ * (a wide window also works, just matches more loosely).
+ */
+export async function searchCaseByNumber(opts: {
+  caseNumber: string
+  commissionId: number
+  fromDate: string
+  toDate: string
+}): Promise<EJagritiCaseRecord[]> {
+  return getJson<EJagritiCaseRecord[]>('/services/case/caseFilingService/v2/getCaseDetailsBySearchType', {
+    method: 'POST',
+    body: JSON.stringify({
+      commissionId: opts.commissionId,
+      page: 0,
+      size: 5,
+      fromDate: opts.fromDate,
+      toDate: opts.toDate,
+      dateRequestType: 2,
+      serchType: 1,
+      serchTypeValue: opts.caseNumber,
+      orderType: 2,
     }),
   })
 }

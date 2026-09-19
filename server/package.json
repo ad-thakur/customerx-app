@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "ingest": "tsx src/ingest.ts"
+    "ingest": "tsx src/ingest.ts",
+    "ingest:backfill-text": "node dist/ingest.js --backfill-text --concurrency 4 --throttle 300"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

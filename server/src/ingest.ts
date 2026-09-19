@@ -70,6 +70,7 @@ import {
   findCategories,
   resolveCategoryId,
   resolveCommission,
+  searchCaseByNumber,
   searchCasesByCategory,
   type EJagritiCaseRecord,
 } from './ejagriti.js'
@@ -78,6 +79,8 @@ import {
   initPrecedentTable,
   upsertPrecedent,
   countPrecedents,
+  listTextlessCases,
+  updateJudgmentText,
   closePrecedentPool,
 } from './precedentStore.js'
 
@@ -215,11 +218,45 @@ function isoDaysAgo(days: number): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * e-Jagriti's `judgmentOrderDocumentBase64` is misnamed: for many cases it is a
+ * raw HTML fragment holding the order text, not a base64 PDF. Convert that HTML
+ * to plain text while keeping the document's line shape.
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    // Turn block-level tag ends into line breaks so the text keeps its shape.
+    .replace(/<\/(p|div|tr|h[1-6]|li)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 async function extractJudgmentText(rec: EJagritiCaseRecord): Promise<string | null> {
-  const b64 = rec.judgmentOrderDocumentBase64
-  if (!b64) return null
+  const raw = rec.judgmentOrderDocumentBase64
+  if (!raw) return null
+
+  // Two formats arrive under the same field. An HTML fragment begins with a tag;
+  // a base64 PDF begins "JVBERi" ("%PDF" encoded). Treating HTML as base64 (the
+  // old behaviour) fed garbage to the PDF parser and lost the text entirely.
+  if (raw.trimStart().startsWith('<')) {
+    const text = htmlToText(raw)
+    return text.length > 0 ? text : null
+  }
+
   try {
-    const parsed = await pdfParse(Buffer.from(b64, 'base64'))
+    const parsed = await pdfParse(Buffer.from(raw, 'base64'))
     const text = parsed.text?.replace(/\s+\n/g, '\n').trim()
     return text && text.length > 0 ? text : null
   } catch (err) {
@@ -267,6 +304,13 @@ async function main(): Promise<void> {
   if (!probing && !counting && !process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Point it at your Postgres (e.g. the Railway connection string).')
     process.exit(1)
+  }
+
+  // Second pass: fill judgment_text for rows the bulk ingest left empty, by
+  // re-fetching each by case number (see backfillJudgmentText). Needs the DB.
+  if (hasFlag('backfill-text')) {
+    await backfillJudgmentText()
+    return
   }
 
   const categories = requestedCategories()
@@ -503,6 +547,84 @@ async function ingestCategory(o: IngestOptions): Promise<{ inserted: number; upd
   }
 
   return { inserted, updated }
+}
+
+/**
+ * Second-pass text recovery (--backfill-text).
+ *
+ * The bulk ingest left many rows with judgment_text NULL: the category search
+ * returned their order as an unparseable PDF. Fetched by case number instead,
+ * those same orders come back as HTML we can extract. This walks every text-less
+ * row, re-fetches it by number, and fills the column in place. It only writes
+ * rows that are still empty, so it is fully resumable — re-running continues
+ * from wherever it stopped and never rewrites text already recovered.
+ *
+ *   --concurrency 4   parallel in-flight fetches (default 4)
+ *   --throttle 300    ms each worker waits between cases (default 300)
+ *   --commission id   commission to search (default NCDRC)
+ */
+async function backfillJudgmentText(): Promise<void> {
+  const commissionId = Number(arg('commission', String(COMMISSION_NCDRC)))
+  const concurrency = Math.max(1, Number(arg('concurrency', '4')))
+  const throttleMs = Number(arg('throttle', '300'))
+
+  const cases = await listTextlessCases()
+  console.log(
+    `${cases.length.toLocaleString()} cases without judgment text. Re-fetching each by case ` +
+      `number (concurrency ${concurrency}) and filling the column in place.\n`,
+  )
+
+  let filled = 0
+  let noText = 0
+  let failed = 0
+  let processed = 0
+  let cursor = 0
+
+  async function worker(): Promise<void> {
+    // `cursor++` is atomic here — there is no await between reading and
+    // incrementing it — so each case is claimed by exactly one worker.
+    for (let i = cursor++; i < cases.length; i = cursor++) {
+      const c = cases[i]
+      // Bound the case-number search to its disposal year; fall back to the full
+      // corpus range when the row has no disposal date.
+      const yr = c.disposalDate?.slice(0, 4)
+      const fromDate = yr ? `${yr}-01-01` : '2008-01-01'
+      const toDate = yr ? `${yr}-12-31` : new Date().toISOString().slice(0, 10)
+
+      try {
+        const records = await searchCaseByNumber({ caseNumber: c.caseNumber, commissionId, fromDate, toDate })
+        const rec = records.find((r) => r.caseNumber === c.caseNumber) ?? records[0]
+        const text = rec ? await extractJudgmentText(rec) : null
+        if (text) {
+          if (await updateJudgmentText(c.caseNumber, text)) {
+            filled++
+            console.log(`  + ${c.caseNumber} — ${text.length.toLocaleString()} chars`)
+          }
+        } else {
+          noText++
+          console.log(`  ! ${c.caseNumber} — no recoverable text`)
+        }
+      } catch (err) {
+        failed++
+        console.error(`  x ${c.caseNumber} — ${(err as Error).message}`)
+      }
+
+      if (++processed % 200 === 0) {
+        console.log(
+          `… ${processed}/${cases.length} — filled ${filled}, no-text ${noText}, failed ${failed}`,
+        )
+      }
+      if (throttleMs > 0) await sleep(throttleMs)
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, cases.length) }, worker))
+
+  console.log(
+    `\nDone. Filled ${filled.toLocaleString()}, no recoverable text ${noText.toLocaleString()}, ` +
+      `failed ${failed.toLocaleString()}, of ${cases.length.toLocaleString()}.`,
+  )
+  await closePrecedentPool()
 }
 
 main().catch((err) => {

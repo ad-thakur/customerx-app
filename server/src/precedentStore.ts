@@ -232,6 +232,50 @@ export async function searchLocalPrecedents(
   return res.rows
 }
 
+/* -------------------------------------------------------------------------- */
+/* Judgment-text backfill                                                     */
+/*                                                                            */
+/* The bulk ingest stored many rows without judgment_text: their order came   */
+/* back from the category search as an unparseable PDF. Those same cases,      */
+/* fetched by case number, return recoverable HTML — see ingest.ts            */
+/* (--backfill-text). These helpers list the gaps and fill them in place.     */
+/* -------------------------------------------------------------------------- */
+
+export interface TextlessCase {
+  caseNumber: string
+  /** YYYY-MM-DD, or null when the row has no disposal date. */
+  disposalDate: string | null
+}
+
+/** Every row still missing judgment text, newest disposals first. */
+export async function listTextlessCases(): Promise<TextlessCase[]> {
+  const res = await pool.query<{ case_number: string; disposal_date: Date | null }>(
+    `SELECT case_number, disposal_date
+       FROM precedent_cases
+      WHERE judgment_text IS NULL
+      ORDER BY disposal_date DESC NULLS LAST`,
+  )
+  return res.rows.map((r) => ({
+    caseNumber: r.case_number,
+    disposalDate: r.disposal_date ? r.disposal_date.toISOString().slice(0, 10) : null,
+  }))
+}
+
+/**
+ * Fill judgment_text for one case, but only while it is still empty — so the
+ * backfill is idempotent and safe to re-run, and a concurrent writer can't be
+ * clobbered. Returns true when a row was actually updated.
+ */
+export async function updateJudgmentText(caseNumber: string, text: string): Promise<boolean> {
+  const res = await pool.query(
+    `UPDATE precedent_cases
+        SET judgment_text = $2, ingested_at = now()
+      WHERE case_number = $1 AND judgment_text IS NULL`,
+    [caseNumber, text],
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
 export async function closePrecedentPool(): Promise<void> {
   await pool.end()
 }
