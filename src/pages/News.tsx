@@ -39,9 +39,18 @@ export default function News() {
     }
   }, [])
 
+  // Sectors present within the selected category, so the filter row never
+  // offers a sector that would return nothing. Switching category resets it.
   const allSectors = useMemo(
-    () => [...new Set(articles.flatMap((a) => a.sectors))].sort((a, b) => a.localeCompare(b)),
-    [articles],
+    () =>
+      [
+        ...new Set(
+          articles
+            .filter((a) => category === 'all' || a.category === category)
+            .flatMap((a) => a.sectors),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [articles, category],
   )
 
   const visible = useMemo(
@@ -94,7 +103,10 @@ export default function News() {
             <button
               key={t.key}
               type="button"
-              onClick={() => setCategory(t.key)}
+              onClick={() => {
+                setCategory(t.key)
+                setSector(null)
+              }}
               className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
                 category === t.key
                   ? 'bg-ink text-paper border-ink'
