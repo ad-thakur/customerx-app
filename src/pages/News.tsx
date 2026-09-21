@@ -87,10 +87,19 @@ export default function News() {
   const [category, setCategory] = useState<NewsCategory | 'all'>('all')
   const [sector, setSector] = useState<string | null>(null)
 
-  // Every sector present in the corpus, for the filter row.
+  // Sectors present *within the selected category*, so the filter row only ever
+  // offers a sector that will actually return articles — no dead-end "no
+  // articles" combinations. Switching category resets the sector (see the tabs).
   const allSectors = useMemo(
-    () => [...new Set(NEWS_SEED.flatMap((a) => a.sectors))].sort((a, b) => a.localeCompare(b)),
-    [],
+    () =>
+      [
+        ...new Set(
+          NEWS_SEED.filter((a) => category === 'all' || a.category === category).flatMap(
+            (a) => a.sectors,
+          ),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [category],
   )
 
   const articles = useMemo(() => {
@@ -131,7 +140,10 @@ export default function News() {
             <button
               key={t.key}
               type="button"
-              onClick={() => setCategory(t.key)}
+              onClick={() => {
+                setCategory(t.key)
+                setSector(null)
+              }}
               className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
                 category === t.key
                   ? 'bg-ink text-paper border-ink'
