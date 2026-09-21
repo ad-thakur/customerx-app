@@ -4,6 +4,7 @@ import Footer from './components/Footer'
 import Home from './pages/Home'
 import About from './pages/About'
 import News from './pages/News'
+import ReviewNews from './pages/ReviewNews'
 import File from './pages/File'
 import Result from './pages/Result'
 import Payment from './pages/Payment'
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/news" element={<News />} />
+            <Route path="/news/review" element={<ReviewNews />} />
             <Route path="/claim-aggregation" element={<ClaimAggregation />} />
             <Route path="/file" element={<File />} />
             <Route path="/result" element={<Result />} />

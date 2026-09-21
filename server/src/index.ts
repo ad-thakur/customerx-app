@@ -15,6 +15,7 @@ import {
 } from './caseLogic.js'
 import { generateAiAssessment } from './ai.js'
 import { initPrecedentTable, searchLocalPrecedents } from './precedentStore.js'
+import { initNewsTable, listPublished, listDrafts, setStatus } from './newsStore.js'
 import { categoriesForGrounds, isGroundId } from './categories.js'
 import {
   caseIdsForUser,
@@ -60,6 +61,26 @@ async function requireUser(req: express.Request, res: express.Response) {
   const user = await userForSession(sessionFrom(req))
   if (!user) {
     res.status(401).json({ error: 'Please sign in' })
+    return null
+  }
+  return user
+}
+
+/**
+ * Resolves a signed-in user who is also a news admin (their email is listed in
+ * NEWS_ADMIN_EMAILS), or sends the right error and returns null. The review
+ * queue and the publish/reject actions are gated on this — so agent proposals
+ * only go live when an authorised person approves them.
+ */
+async function requireNewsAdmin(req: express.Request, res: express.Response) {
+  const user = await requireUser(req, res)
+  if (!user) return null
+  const admins = (process.env.NEWS_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+  if (!admins.includes(user.email.toLowerCase())) {
+    res.status(403).json({ error: 'Not authorised to review news' })
     return null
   }
   return user
@@ -447,10 +468,66 @@ app.get('/api/precedents', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// Consumer Watch — news index
+//
+//   GET  /api/news              public: published articles for the /news page
+//   GET  /api/news/drafts       admin:  the review queue (agent proposals)
+//   POST /api/news/:id/publish  admin:  approve a draft → it goes live
+//   POST /api/news/:id/reject   admin:  drop a draft
+//
+// The agent (src/newsAgent.ts) only ever writes drafts, so nothing reaches the
+// public feed until an admin approves it here.
+// ---------------------------------------------------------------------------
+
+app.get('/api/news', async (_req, res) => {
+  try {
+    res.json({ articles: await listPublished() })
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message })
+  }
+})
+
+app.get('/api/news/drafts', async (req, res) => {
+  try {
+    if (!(await requireNewsAdmin(req, res))) return
+    res.json({ articles: await listDrafts() })
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/news/:id/publish', async (req, res) => {
+  try {
+    if (!(await requireNewsAdmin(req, res))) return
+    if (!(await setStatus(req.params.id as string, 'published'))) {
+      res.status(404).json({ error: 'Draft not found' })
+      return
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/news/:id/reject', async (req, res) => {
+  try {
+    if (!(await requireNewsAdmin(req, res))) return
+    if (!(await setStatus(req.params.id as string, 'rejected'))) {
+      res.status(404).json({ error: 'Draft not found' })
+      return
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message })
+  }
+})
+
+// ---------------------------------------------------------------------------
 
 const port = Number(process.env.PORT ?? 3001)
 initDb()
   .then(() => initPrecedentTable())
+  .then(() => initNewsTable())
   .then(() => initAuthTables())
   .then(() => {
     app.listen(port, () => {
