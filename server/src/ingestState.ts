@@ -26,12 +26,20 @@
  *   --force                 redo commission-years already marked finished
  *   --dry-run [pages]       no database: fetch and parse a few pages per task
  *                           and print what would be written (default 1 page)
+ *   --out rows.ndjson       no database: append rows to a local file instead
+ *                           (resumable — finished tasks are recorded in it too)
+ *   --load rows.ndjson      upsert a file written by --out into DATABASE_URL and
+ *                           mark its finished tasks, so a later sweep skips them
+ *   --time-limit 180        stop after this many minutes; an unfinished task is
+ *                           left unmarked and redone on the next run
  *
  * Work is split into commission × disposal-year tasks, newest year first. Each
  * finished task is recorded in ingest_progress, so the run is resumable: restart
  * it with the same arguments and it picks up where it stopped. Writes go
  * through the idempotent upsertPrecedent, keyed on case number.
  */
+import { appendFileSync, createReadStream, existsSync, readFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 import {
   fetchCaseCategories,
   fetchDistrictCommissions,
@@ -177,6 +185,62 @@ async function judgmentText(rec: EJagritiCaseRecord, task: Task): Promise<string
   return null
 }
 
+/**
+ * e-Jagriti has typos in its dates (a judgement dated "0023-08-19"). Anything
+ * before the 1986 Act or in the future is treated as unknown.
+ */
+function plausibleDate(d: string | null): string | null {
+  if (!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return null
+  const year = Number(d.slice(0, 4))
+  return year >= 1986 && year <= new Date().getFullYear() + 1 ? d.slice(0, 10) : null
+}
+
+/** Thrown between pages once --time-limit has passed. */
+class TimeUp extends Error {}
+
+/** Task keys already finished in an --out file. */
+function finishedInFile(path: string): Set<string> {
+  const done = new Set<string>()
+  if (!existsSync(path)) return done
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (line.startsWith('{"task"')) done.add(JSON.parse(line).task)
+  }
+  return done
+}
+
+/** Upsert every row in an --out file, then mark its finished tasks. */
+async function load(path: string): Promise<void> {
+  await initPrecedentTable()
+  await initProgressTable()
+  let rows = 0
+  let failed = 0
+  const tasks: Array<{ task: string; cases: number }> = []
+  const lines = createInterface({ input: createReadStream(path), crlfDelay: Infinity })
+  for await (const line of lines) {
+    if (!line.trim()) continue
+    const rec = JSON.parse(line)
+    if (rec.task) {
+      tasks.push(rec)
+      continue
+    }
+    try {
+      await upsertPrecedent(rec.row)
+      if (++rows % 1000 === 0) console.log(`  … ${rows.toLocaleString()} rows loaded`)
+    } catch (err) {
+      failed++
+      console.error(`  ! failed to load ${rec.row?.caseNumber}: ${(err as Error).message}`)
+    }
+  }
+  // Only mark tasks once all rows are in, and not at all if any row failed.
+  if (failed === 0) for (const t of tasks) await markTaskFinished(t.task, t.cases)
+  console.log(
+    `Loaded ${rows.toLocaleString()} rows, ${failed} failed; ` +
+      `${failed === 0 ? `marked ${tasks.length} tasks finished` : 'no tasks marked — fix and re-load'}. ` +
+      `${(await countPrecedents()).toLocaleString()} rows in precedent_cases.`,
+  )
+  await closePrecedentPool()
+}
+
 interface TaskResult {
   cases: number
   withText: number
@@ -186,7 +250,7 @@ interface TaskResult {
 async function runTask(
   task: Task,
   categories: Array<{ id: number; name: string }>,
-  opts: { size: number; dryRunPages: number | null },
+  opts: { size: number; dryRunPages: number | null; out: string | null; deadline: number },
 ): Promise<TaskResult> {
   const tag = `[${task.commission.label} ${task.year}]`
   const catOf = await categoryMap(task, categories)
@@ -194,6 +258,7 @@ async function runTask(
 
   for (let page = 0; ; page++) {
     if (opts.dryRunPages !== null && page >= opts.dryRunPages) break
+    if (Date.now() > opts.deadline) throw new TimeUp()
     const records = await searchAllJudgments({
       commissionId: task.commission.id,
       fromDate: task.fromDate,
@@ -216,9 +281,11 @@ async function runTask(
         respondent: rec.respondentName?.trim() || null,
         complainantAdvocate: rec.complainantAdvocateName?.trim() || null,
         respondentAdvocate: rec.respondentAdvocateName?.trim() || null,
-        filingDate: rec.caseFilingDate,
-        disposalDate: rec.dateOfDisposal,
-        judgmentDate: rec.judgemtmentDate,
+        filingDate: plausibleDate(rec.caseFilingDate),
+        disposalDate: plausibleDate(rec.dateOfDisposal),
+        // Judgement and disposal dates coincide in practice; fall back when the
+        // judgement date is missing or mistyped.
+        judgmentDate: plausibleDate(rec.judgemtmentDate) ?? plausibleDate(rec.dateOfDisposal),
         outcome: rec.caseStageName,
         judgmentText: text,
         // Keep the commission id alongside the API's own fields so rows can be
@@ -236,7 +303,8 @@ async function runTask(
         continue
       }
       try {
-        await upsertPrecedent(row)
+        if (opts.out) appendFileSync(opts.out, JSON.stringify({ row }) + '\n')
+        else await upsertPrecedent(row)
       } catch (err) {
         result.failed++
         console.error(`  ! ${tag} failed to save ${rec.caseNumber}: ${(err as Error).message}`)
@@ -258,11 +326,17 @@ async function main(): Promise<void> {
   const concurrency = Number(arg('concurrency', '3'))
   const categoryMax = Number(arg('category-max', '50'))
   const dryRunPages = hasFlag('dry-run') ? Number(arg('dry-run', '1')) : null
+  const out = arg('out', '') || null
+  const minutes = Number(arg('time-limit', '0'))
+  const deadline = minutes > 0 ? Date.now() + minutes * 60_000 : Infinity
+  const loadPath = arg('load', '')
 
-  if (dryRunPages === null && !process.env.DATABASE_URL) {
+  if ((loadPath || (dryRunPages === null && !out)) && !process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Point it at your Postgres (e.g. the Railway connection string).')
     process.exit(1)
   }
+
+  if (loadPath) return load(loadPath)
 
   const commissions = await discoverCommissions(state)
   const categories = (await fetchCaseCategories())
@@ -270,7 +344,10 @@ async function main(): Promise<void> {
     .map((c) => ({ id: c.case_category_id, name: c.case_category_name_en.trim() }))
 
   let tasks = buildTasks(commissions, from, to)
-  if (dryRunPages === null) {
+  if (out && !hasFlag('force')) {
+    const done = finishedInFile(out)
+    tasks = tasks.filter((t) => !done.has(t.key))
+  } else if (dryRunPages === null && !out) {
     await initPrecedentTable()
     await initProgressTable()
     if (!hasFlag('force')) {
@@ -282,7 +359,8 @@ async function main(): Promise<void> {
   console.log(
     `${state}: ${commissions.length} commissions, disposed ${from} → ${to}. ` +
       `${tasks.length} commission-years to sweep, ${concurrency} at a time` +
-      `${dryRunPages !== null ? ` — DRY RUN, ${dryRunPages} page(s) each, no writes` : ''}.\n`,
+      `${dryRunPages !== null ? ` — DRY RUN, ${dryRunPages} page(s) each, no writes` : ''}` +
+      `${out ? ` — writing to ${out}` : ''}.\n`,
   )
   for (const c of commissions) console.log(`  ${String(c.id).padStart(8)}  ${c.label}`)
   console.log()
@@ -297,12 +375,13 @@ async function main(): Promise<void> {
       const task = tasks[next++]
       const tag = `[${task.commission.label} ${task.year}]`
       try {
-        const r = await runTask(task, categories, { size, dryRunPages })
+        const r = await runTask(task, categories, { size, dryRunPages, out, deadline })
         totals.cases += r.cases
         totals.withText += r.withText
         totals.failed += r.failed
         // A task with failed writes is left unfinished so a re-run retries it.
-        if (dryRunPages === null && r.failed === 0) await markTaskFinished(task.key, r.cases)
+        if (r.failed === 0 && out) appendFileSync(out, JSON.stringify({ task: task.key, cases: r.cases }) + '\n')
+        else if (r.failed === 0 && dryRunPages === null) await markTaskFinished(task.key, r.cases)
         completed++
         console.log(
           `✓ ${tag} ${r.cases} judgements, ${r.withText} with text` +
@@ -310,6 +389,11 @@ async function main(): Promise<void> {
             `${totals.cases.toLocaleString()} cases so far`,
         )
       } catch (err) {
+        if (err instanceof TimeUp) {
+          console.log(`⏱ ${tag} stopped at the time limit — will be redone on the next run`)
+          next = tasks.length
+          continue
+        }
         failedTasks.push(task.key)
         console.error(`✗ ${tag} abandoned: ${(err as Error).message}`)
       }
@@ -323,7 +407,7 @@ async function main(): Promise<void> {
   if (failedTasks.length) {
     console.log(`  ${failedTasks.length} task(s) abandoned — re-run to retry: ${failedTasks.join(', ')}`)
   }
-  if (dryRunPages === null) {
+  if (dryRunPages === null && !out) {
     console.log(`  ${(await countPrecedents()).toLocaleString()} rows in precedent_cases`)
     await closePrecedentPool()
   }
