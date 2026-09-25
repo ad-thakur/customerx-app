@@ -199,18 +199,127 @@ export interface SearchPageOptions {
 }
 
 export async function searchCasesByCategory(opts: SearchPageOptions): Promise<EJagritiCaseRecord[]> {
+  return search({
+    commissionId: opts.commissionId,
+    page: opts.page,
+    size: opts.size,
+    fromDate: opts.fromDate,
+    toDate: opts.toDate,
+    dateRequestType: opts.dateRequestType ?? 2,
+    serchType: 6,
+    serchTypeValue: String(opts.categoryId),
+    orderType: opts.orderType ?? 2,
+  })
+}
+
+function search(body: Record<string, unknown>): Promise<EJagritiCaseRecord[]> {
   return getJson<EJagritiCaseRecord[]>('/services/case/caseFilingService/v2/getCaseDetailsBySearchType', {
     method: 'POST',
-    body: JSON.stringify({
+    body: JSON.stringify(body),
+  })
+}
+
+/**
+ * Every judgement a commission delivered in a disposal window, regardless of
+ * category. A free-text search (serchType 8) with an empty value matches all
+ * cases — it is the only way to reach the ~10% of district cases that carry no
+ * category at all, which a category-by-category ingest never sees.
+ */
+export async function searchAllJudgments(opts: {
+  commissionId: number
+  fromDate: string
+  toDate: string
+  page: number
+  size: number
+}): Promise<EJagritiCaseRecord[]> {
+  return search({ ...opts, dateRequestType: 2, serchType: 8, serchTypeValue: '', orderType: 2 })
+}
+
+/**
+ * Case numbers filed under a category, cheaply. orderType 1 (daily orders)
+ * returns the same case metadata as a judgement search but without the embedded
+ * order document, so a page of 100 costs tens of KB rather than tens of MB. Its
+ * result set is a superset of the judgements in the window (it also lists cases
+ * that only have daily orders), which makes it suitable for a case → category
+ * lookup but not as a list of judgements.
+ */
+export async function listCaseNumbersInCategory(opts: {
+  commissionId: number
+  categoryId: number
+  fromDate: string
+  toDate: string
+}): Promise<string[]> {
+  const size = 100
+  const out: string[] = []
+  for (let page = 0; ; page++) {
+    const rows = await search({
       commissionId: opts.commissionId,
-      page: opts.page,
-      size: opts.size,
+      page,
+      size,
       fromDate: opts.fromDate,
       toDate: opts.toDate,
-      dateRequestType: opts.dateRequestType ?? 2,
+      dateRequestType: 2,
       serchType: 6,
       serchTypeValue: String(opts.categoryId),
-      orderType: opts.orderType ?? 2,
-    }),
+      orderType: 1,
+    })
+    for (const r of rows) out.push(r.caseNumber)
+    if (rows.length < size) return out
+  }
+}
+
+/**
+ * Fetch a single case by its full case number (serchType 1). Used as a second
+ * chance at the order text: the same case fetched by number sometimes returns an
+ * HTML order where the listing returned an unparseable PDF.
+ */
+export async function searchCaseByNumber(opts: {
+  caseNumber: string
+  commissionId: number
+  fromDate: string
+  toDate: string
+}): Promise<EJagritiCaseRecord[]> {
+  return search({
+    commissionId: opts.commissionId,
+    page: 0,
+    size: 5,
+    fromDate: opts.fromDate,
+    toDate: opts.toDate,
+    dateRequestType: 2,
+    serchType: 1,
+    serchTypeValue: opts.caseNumber,
+    orderType: 2,
   })
+}
+
+/* -------------------------------------------------------------------------- */
+/* Commissions                                                                */
+/*                                                                            */
+/* NCDRC (11000000) is one commission among ~750. Ids are structured by state: */
+/* 11270000 is the Maharashtra State Commission, 33270000 / 22270000 … are its */
+/* circuit and regional benches (same trailing digits), and 11270466 … are its */
+/* District Commissions. Benches hold their own cases — the principal seat's   */
+/* search does not include them.                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface EJagritiCommission {
+  commissionId: number
+  commissionNameEn: string
+  /** True for circuit and regional benches rather than a principal seat. */
+  circuitAdditionBenchStatus: boolean
+  activeStatus: boolean
+}
+
+/** All State Commissions, circuit benches and regional benches. */
+export async function fetchStateCommissions(): Promise<EJagritiCommission[]> {
+  return getJson<EJagritiCommission[]>('/services/report/report/getStateCommissionAndCircuitBench')
+}
+
+/** District Commissions sitting under a given State Commission id. */
+export async function fetchDistrictCommissions(
+  stateCommissionId: number,
+): Promise<EJagritiCommission[]> {
+  return getJson<EJagritiCommission[]>(
+    `/services/report/report/getDistrictCommissionByCommissionId?commissionId=${stateCommissionId}`,
+  )
 }

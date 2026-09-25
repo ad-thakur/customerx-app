@@ -29,6 +29,9 @@ export interface PrecedentCase {
   relatedCategories: string[]
 }
 
+/** Category for cases e-Jagriti files under no category at all. */
+export const UNCATEGORISED = 'UNCATEGORISED'
+
 export async function initPrecedentTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS precedent_cases (
@@ -80,6 +83,11 @@ export async function upsertPrecedent(p: PrecedentCase): Promise<'inserted' | 'u
       outcome, judgment_text, raw_meta, related_categories
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     ON CONFLICT (case_number) DO UPDATE SET
+      -- A case the sweep stored without a category can gain one later.
+      category = CASE
+        WHEN precedent_cases.category = '${UNCATEGORISED}' THEN EXCLUDED.category
+        ELSE precedent_cases.category
+      END,
       outcome = EXCLUDED.outcome,
       disposal_date = EXCLUDED.disposal_date,
       judgment_date = EXCLUDED.judgment_date,
@@ -272,6 +280,37 @@ export async function searchLocalPrecedents(
     [terms, MIN_RANK, limit, restrict ? categories : null],
   )
   return res.rows
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sweep progress                                                             */
+/*                                                                            */
+/* A state sweep is tens of thousands of multi-MB requests. It records each   */
+/* finished commission-year here so a crashed or redeployed run skips what is */
+/* already done instead of downloading it again.                              */
+/* -------------------------------------------------------------------------- */
+
+export async function initProgressTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingest_progress (
+      task TEXT PRIMARY KEY,
+      cases INT NOT NULL,
+      finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+}
+
+export async function finishedTasks(): Promise<Set<string>> {
+  const res = await pool.query<{ task: string }>(`SELECT task FROM ingest_progress`)
+  return new Set(res.rows.map((r) => r.task))
+}
+
+export async function markTaskFinished(task: string, cases: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO ingest_progress (task, cases) VALUES ($1, $2)
+     ON CONFLICT (task) DO UPDATE SET cases = EXCLUDED.cases, finished_at = now()`,
+    [task, cases],
+  )
 }
 
 export async function closePrecedentPool(): Promise<void> {
