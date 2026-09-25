@@ -65,7 +65,7 @@ const HEADERS = {
 }
 
 /** Abandon a single request that stalls: e-Jagriti can hold a connection open forever. */
-const REQUEST_TIMEOUT_MS = 90_000
+const REQUEST_TIMEOUT_MS = 180_000
 
 /** Backoff waits before each retry. Length also sets the number of retries. */
 const RETRY_DELAYS_MS = [2_000, 8_000, 30_000]

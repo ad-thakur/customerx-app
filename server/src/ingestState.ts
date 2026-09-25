@@ -241,6 +241,44 @@ async function load(path: string): Promise<void> {
   await closePrecedentPool()
 }
 
+/**
+ * One page of judgements. A page embeds every order as base64, so a page of 10
+ * can run to 50+ MB and outlast the request timeout however often it is
+ * retried. When that happens, fetch the same ten cases one at a time (page
+ * size 1 addresses them individually); a case that still fails is skipped and
+ * counted, which leaves the task unfinished so a later run retries it.
+ */
+async function fetchPage(
+  task: Task,
+  page: number,
+  size: number,
+): Promise<{ records: EJagritiCaseRecord[]; end: boolean; skipped: number }> {
+  const base = { commissionId: task.commission.id, fromDate: task.fromDate, toDate: task.toDate }
+  try {
+    const records = await searchAllJudgments({ ...base, page, size })
+    return { records, end: records.length < size, skipped: 0 }
+  } catch (err) {
+    console.warn(
+      `  ! [${task.commission.label} ${task.year}] page ${page} failed (${(err as Error).message}); fetching its cases one by one`,
+    )
+  }
+  const records: EJagritiCaseRecord[] = []
+  let skipped = 0
+  for (let i = 0; i < size; i++) {
+    try {
+      const [rec] = await searchAllJudgments({ ...base, page: page * size + i, size: 1 })
+      if (!rec) return { records, end: true, skipped }
+      records.push(rec)
+    } catch (err) {
+      skipped++
+      console.error(
+        `  ! [${task.commission.label} ${task.year}] case ${page * size + i} skipped: ${(err as Error).message}`,
+      )
+    }
+  }
+  return { records, end: false, skipped }
+}
+
 interface TaskResult {
   cases: number
   withText: number
@@ -259,13 +297,8 @@ async function runTask(
   for (let page = 0; ; page++) {
     if (opts.dryRunPages !== null && page >= opts.dryRunPages) break
     if (Date.now() > opts.deadline) throw new TimeUp()
-    const records = await searchAllJudgments({
-      commissionId: task.commission.id,
-      fromDate: task.fromDate,
-      toDate: task.toDate,
-      page,
-      size: opts.size,
-    })
+    const { records, end, skipped } = await fetchPage(task, page, opts.size)
+    result.failed += skipped
 
     for (const rec of records) {
       result.cases++
@@ -311,7 +344,7 @@ async function runTask(
       }
     }
 
-    if (records.length < opts.size) break
+    if (end) break
     await sleep(1000) // be polite to a government service
   }
 
