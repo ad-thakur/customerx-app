@@ -248,7 +248,15 @@ async function load(path: string): Promise<void> {
   const inFlight = new Set<Promise<void>>()
   for await (const line of ndjsonLines(path)) {
     if (!line.trim()) continue
-    const rec = JSON.parse(line)
+    let rec
+    try {
+      rec = JSON.parse(line)
+    } catch {
+      // A sweep killed mid-write can leave one truncated line; its case is
+      // re-fetched because the task was never marked finished.
+      console.warn(`  ! skipping unreadable line (${line.length} chars)`)
+      continue
+    }
     if (rec.task) {
       tasks.push(rec)
       continue
@@ -487,6 +495,14 @@ async function main(): Promise<void> {
   }
   if (failedTasks.length) process.exitCode = 1
 }
+
+// pdf.js (inside pdf-parse) rejects promises it never awaits when a PDF is
+// corrupt ("bad XRef entry"), which escapes extractJudgmentText's try/catch and
+// would otherwise kill an hours-long sweep. The affected case is already stored
+// without text; log and carry on.
+process.on('unhandledRejection', (reason) => {
+  console.warn(`  ! ignored stray PDF error: ${(reason as Error)?.message ?? reason}`)
+})
 
 main().catch((err) => {
   console.error(err)
