@@ -39,7 +39,7 @@
  * it with the same arguments and it picks up where it stopped. Writes go
  * through the idempotent upsertPrecedent, keyed on case number.
  */
-import { appendFileSync, createReadStream, existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, createReadStream, existsSync } from 'node:fs'
 import {
   fetchCaseCategories,
   fetchDistrictCommissions,
@@ -199,11 +199,11 @@ function plausibleDate(d: string | null): string | null {
 /** Thrown between pages once --time-limit has passed. */
 class TimeUp extends Error {}
 
-/** Task keys already finished in an --out file. */
-function finishedInFile(path: string): Set<string> {
+/** Task keys already finished in an --out file (streamed: it outgrows a string). */
+async function finishedInFile(path: string): Promise<Set<string>> {
   const done = new Set<string>()
   if (!existsSync(path)) return done
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
+  for await (const line of ndjsonLines(path)) {
     if (line.startsWith('{"task"')) done.add(JSON.parse(line).task)
   }
   return done
@@ -427,7 +427,7 @@ async function main(): Promise<void> {
 
   let tasks = buildTasks(commissions, from, to)
   if (out && !hasFlag('force')) {
-    const done = finishedInFile(out)
+    const done = await finishedInFile(out)
     tasks = tasks.filter((t) => !done.has(t.key))
   } else if (dryRunPages === null && !out) {
     await initPrecedentTable()
