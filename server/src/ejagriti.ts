@@ -251,11 +251,11 @@ export async function listCaseNumbersInCategory(opts: {
 }): Promise<string[]> {
   const size = 100
   const out: string[] = []
-  for (let page = 0; ; page++) {
-    const rows = await search({
+  const pageOf = (page: number, pageSize: number) =>
+    search({
       commissionId: opts.commissionId,
       page,
-      size,
+      size: pageSize,
       fromDate: opts.fromDate,
       toDate: opts.toDate,
       dateRequestType: 2,
@@ -263,6 +263,20 @@ export async function listCaseNumbersInCategory(opts: {
       serchTypeValue: String(opts.categoryId),
       orderType: 1,
     })
+  for (let page = 0; ; page++) {
+    let rows: EJagritiCaseRecord[]
+    try {
+      rows = await pageOf(page, size)
+    } catch {
+      // Some commissions embed daily-order documents even here (Raigad: ~40 MB
+      // per 100 rows), so a full page can be cut off. Re-read it in tens.
+      rows = []
+      for (let sub = 0; sub < size / 10; sub++) {
+        const part = await pageOf(page * 10 + sub, 10)
+        rows.push(...part)
+        if (part.length < 10) break
+      }
+    }
     for (const r of rows) out.push(r.caseNumber)
     if (rows.length < size) return out
   }
