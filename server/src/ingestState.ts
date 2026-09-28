@@ -30,6 +30,7 @@
  *                           (resumable — finished tasks are recorded in it too)
  *   --load rows.ndjson      upsert a file written by --out into DATABASE_URL and
  *                           mark its finished tasks, so a later sweep skips them
+ *   --load-concurrency 8    parallel upserts during --load (default 8)
  *   --time-limit 180        stop after this many minutes; an unfinished task is
  *                           left unmarked and redone on the next run
  *
@@ -39,7 +40,6 @@
  * through the idempotent upsertPrecedent, keyed on case number.
  */
 import { appendFileSync, createReadStream, existsSync, readFileSync } from 'node:fs'
-import { createInterface } from 'node:readline'
 import {
   fetchCaseCategories,
   fetchDistrictCommissions,
@@ -55,6 +55,7 @@ import {
   UNCATEGORISED,
   closePrecedentPool,
   countPrecedents,
+  existingCaseNumbers,
   finishedTasks,
   initPrecedentTable,
   initProgressTable,
@@ -208,29 +209,69 @@ function finishedInFile(path: string): Set<string> {
   return done
 }
 
+/**
+ * Lines of an NDJSON file, split on \n only. node:readline also breaks on
+ * U+2028/U+2029, which JSON.stringify leaves unescaped and judgment text does
+ * contain, so it would cut a record in half.
+ */
+async function* ndjsonLines(path: string): AsyncGenerator<string> {
+  let buf = ''
+  for await (const chunk of createReadStream(path, { encoding: 'utf8' })) {
+    buf += chunk
+    let nl: number
+    while ((nl = buf.indexOf('\n')) !== -1) {
+      yield buf.slice(0, nl)
+      buf = buf.slice(nl + 1)
+    }
+  }
+  if (buf) yield buf
+}
+
+/** JSON for one NDJSON line, with the Unicode line separators escaped. */
+function ndjson(value: unknown): string {
+  return JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029') + '\n'
+}
+
 /** Upsert every row in an --out file, then mark its finished tasks. */
 async function load(path: string): Promise<void> {
   await initPrecedentTable()
   await initProgressTable()
+  // Rows are upserted one statement each over the network; run several at once
+  // (the pool allows 10 connections) or a remote load crawls.
+  const parallel = Number(arg('load-concurrency', '8'))
+  // A re-load after an interrupted one skips cases already in the table.
+  const existing = hasFlag('force') ? new Set<string>() : await existingCaseNumbers()
   let rows = 0
+  let skipped = 0
   let failed = 0
   const tasks: Array<{ task: string; cases: number }> = []
-  const lines = createInterface({ input: createReadStream(path), crlfDelay: Infinity })
-  for await (const line of lines) {
+  const inFlight = new Set<Promise<void>>()
+  for await (const line of ndjsonLines(path)) {
     if (!line.trim()) continue
     const rec = JSON.parse(line)
     if (rec.task) {
       tasks.push(rec)
       continue
     }
-    try {
-      await upsertPrecedent(rec.row)
-      if (++rows % 1000 === 0) console.log(`  … ${rows.toLocaleString()} rows loaded`)
-    } catch (err) {
-      failed++
-      console.error(`  ! failed to load ${rec.row?.caseNumber}: ${(err as Error).message}`)
+    if (existing.has(rec.row.caseNumber)) {
+      skipped++
+      continue
     }
+    existing.add(rec.row.caseNumber) // the file can hold a case twice
+    const job = upsertPrecedent(rec.row)
+      .then(() => {
+        if (++rows % 1000 === 0) console.log(`  … ${rows.toLocaleString()} rows loaded`)
+      })
+      .catch((err) => {
+        failed++
+        console.error(`  ! failed to load ${rec.row?.caseNumber}: ${(err as Error).message}`)
+      })
+      .finally(() => inFlight.delete(job))
+    inFlight.add(job)
+    if (inFlight.size >= parallel) await Promise.race(inFlight)
   }
+  await Promise.all(inFlight)
+  if (skipped) console.log(`  (${skipped.toLocaleString()} rows already in the table, skipped)`)
   // Only mark tasks once all rows are in, and not at all if any row failed.
   if (failed === 0) for (const t of tasks) await markTaskFinished(t.task, t.cases)
   console.log(
@@ -336,7 +377,7 @@ async function runTask(
         continue
       }
       try {
-        if (opts.out) appendFileSync(opts.out, JSON.stringify({ row }) + '\n')
+        if (opts.out) appendFileSync(opts.out, ndjson({ row }))
         else await upsertPrecedent(row)
       } catch (err) {
         result.failed++
@@ -413,7 +454,7 @@ async function main(): Promise<void> {
         totals.withText += r.withText
         totals.failed += r.failed
         // A task with failed writes is left unfinished so a re-run retries it.
-        if (r.failed === 0 && out) appendFileSync(out, JSON.stringify({ task: task.key, cases: r.cases }) + '\n')
+        if (r.failed === 0 && out) appendFileSync(out, ndjson({ task: task.key, cases: r.cases }))
         else if (r.failed === 0 && dryRunPages === null) await markTaskFinished(task.key, r.cases)
         completed++
         console.log(

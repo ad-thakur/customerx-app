@@ -313,6 +313,12 @@ export async function markTaskFinished(task: string, cases: number): Promise<voi
   )
 }
 
+/** Every case number already stored — lets a re-load skip finished rows. */
+export async function existingCaseNumbers(): Promise<Set<string>> {
+  const res = await pool.query<{ case_number: string }>(`SELECT case_number FROM precedent_cases`)
+  return new Set(res.rows.map((r) => r.case_number))
+}
+
 export async function closePrecedentPool(): Promise<void> {
   await pool.end()
 }
