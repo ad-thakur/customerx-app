@@ -263,20 +263,26 @@ export async function listCaseNumbersInCategory(opts: {
       serchTypeValue: String(opts.categoryId),
       orderType: 1,
     })
-  for (let page = 0; ; page++) {
-    let rows: EJagritiCaseRecord[]
+  // Some commissions embed daily-order documents even here (Raigad: ~40 MB per
+  // 100 rows; NCDRC more), so a full page can be cut off. Re-read a failed page
+  // in smaller pages, down to single cases.
+  const read = async (page: number, pageSize: number): Promise<EJagritiCaseRecord[]> => {
     try {
-      rows = await pageOf(page, size)
-    } catch {
-      // Some commissions embed daily-order documents even here (Raigad: ~40 MB
-      // per 100 rows), so a full page can be cut off. Re-read it in tens.
-      rows = []
-      for (let sub = 0; sub < size / 10; sub++) {
-        const part = await pageOf(page * 10 + sub, 10)
+      return await pageOf(page, pageSize)
+    } catch (err) {
+      if (pageSize === 1) throw err
+      const smaller = pageSize >= 100 ? 10 : 1
+      const rows: EJagritiCaseRecord[] = []
+      for (let sub = 0; sub < pageSize / smaller; sub++) {
+        const part = await read((page * pageSize) / smaller + sub, smaller)
         rows.push(...part)
-        if (part.length < 10) break
+        if (part.length < smaller) break
       }
+      return rows
     }
+  }
+  for (let page = 0; ; page++) {
+    const rows = await read(page, size)
     for (const r of rows) out.push(r.caseNumber)
     if (rows.length < size) return out
   }
