@@ -13,7 +13,8 @@
  * Usage (from server/, after `npm run build`):
  *   DATABASE_URL=postgres://… node dist/ingestState.js --state MAHARASHTRA [options]
  *
- *   --state MAHARASHTRA     State Commission name, as e-Jagriti lists it
+ *   --state MAHARASHTRA     State Commission name, as e-Jagriti lists it, or
+ *                           NCDRC for the National Commission alone
  *   --from 2020-01-01       disposal window start (default 2020-01-01)
  *   --to   2026-09-25       disposal window end (default today)
  *   --only "Mumbai"         restrict to commissions whose name contains this
@@ -41,6 +42,7 @@
  */
 import { appendFileSync, createReadStream, existsSync } from 'node:fs'
 import {
+  COMMISSION_NCDRC,
   fetchCaseCategories,
   fetchDistrictCommissions,
   fetchStateCommissions,
@@ -97,6 +99,10 @@ interface Task {
 
 /** The state's principal seat, its benches and its District Commissions. */
 async function discoverCommissions(state: string): Promise<Commission[]> {
+  // The National Commission has no benches or districts. Its label matches the
+  // rows the category ingest (ingest.ts) already wrote.
+  if (state.trim().toUpperCase() === 'NCDRC') return [{ id: COMMISSION_NCDRC, label: 'NCDRC' }]
+
   const states = await fetchStateCommissions()
   const wanted = state.trim().toLowerCase()
   const principal = states.find(
