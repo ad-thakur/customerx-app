@@ -9,7 +9,7 @@
 //   2. writeNarrative(): two short paragraphs explaining the deterministic
 //      analysis to a support lead, and a polished first-response draft.
 //
-// No ANTHROPIC_API_KEY, or any failure → the rules-based path is used and the
+// AI switched off (aiSwitch.ts), or any failure → the rules-based path is used and the
 // dashboard still works end to end.
 // ---------------------------------------------------------------------------
 
@@ -17,6 +17,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { extractFactsByRules, type ComplaintAnalysis, type ExtractedFacts } from './brandAnalysis.js'
 import type { Brand, Complaint, OfferKind } from './brandStore.js'
 import type { GroundId } from './types.js'
+import { aiEnabled } from './aiSwitch.js'
 
 const MODEL = process.env.BRAND_AI_MODEL ?? 'claude-opus-5-5'
 
@@ -31,7 +32,7 @@ const GROUND_IDS: GroundId[] = [
 ]
 
 function client(): Anthropic | null {
-  return process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
+  return aiEnabled() ? new Anthropic() : null
 }
 
 /** Running token count for one analysis, so usage can be billed and costed. */

@@ -35,7 +35,8 @@ export default function BrandUsage() {
 
       {!u.aiEnabled && (
         <p className="text-sm border-l-2 border-marigold pl-3 text-ink">
-          AI analysis is switched off on the server (no ANTHROPIC_API_KEY), so nothing is being counted.
+          AI analysis isn’t switched on yet, so complaints get the statistical estimate and nothing is counted against
+          your allowance.
         </p>
       )}
 

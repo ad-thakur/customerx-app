@@ -43,6 +43,7 @@ import {
   type OfferKind,
   type ThreadEntry,
 } from './brandStore.js'
+import { aiEnabled } from './aiSwitch.js'
 
 export const brandRouter = express.Router()
 
@@ -135,7 +136,7 @@ export async function runAnalysis(
   brand: Brand,
   trigger: AnalysisTrigger,
 ): Promise<Complaint> {
-  const aiOn = Boolean(process.env.ANTHROPIC_API_KEY)
+  const aiOn = aiEnabled()
   const usageId = aiOn ? await claimAnalysis(brand.id, analysisLimit(brand), complaint.id, trigger) : null
   const useAi = usageId !== null
   const meter = newMeter()
@@ -829,7 +830,7 @@ async function usageView(brand: Brand, email: string) {
       brand.billingModel === 'pay_per_analysis' && brand.perAnalysisPrice !== null
         ? u.analyses * brand.perAnalysisPrice
         : null,
-    aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
+    aiEnabled: aiEnabled(),
     isAdmin: admin,
     // What this brand costs us to serve — Consumer X staff only.
     internal: admin

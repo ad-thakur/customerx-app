@@ -24,6 +24,7 @@ import { classifyOutcome, type ExtractedFacts, type Outcome } from './brandAnaly
 import { readJudgment, searchCorpus, type Brand, type Complaint } from './brandStore.js'
 import type { Meter } from './brandAi.js'
 import type { GroundId } from './types.js'
+import { aiEnabled } from './aiSwitch.js'
 
 const MODEL = process.env.BRAND_AI_MODEL ?? 'claude-opus-5-5'
 const MAX_TURNS = 12
@@ -154,7 +155,7 @@ export async function reviewPrecedents(
   meter?: Meter,
 ): Promise<AiReview> {
   const now = () => new Date().toISOString()
-  if (!process.env.ANTHROPIC_API_KEY) return { status: 'disabled', generatedAt: now() }
+  if (!aiEnabled()) return { status: 'disabled', generatedAt: now() }
 
   const client = new Anthropic()
   const seen = new Set<string>()

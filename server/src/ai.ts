@@ -4,7 +4,7 @@
 // the product claim. The rules engine produces the verdict — band, range,
 // drivers. The model only (a) ranks/annotates retrieved precedents against
 // the case facts and (b) writes a plain-language narrative around numbers it
-// is given and must not change. No ANTHROPIC_API_KEY (or any failure) →
+// is given and must not change. AI switched off (aiSwitch.ts), or any failure →
 // the assessment ships rules-only. "AI legal advice" is exactly the
 // regulatory posture to avoid.
 
@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { AiAssessment, Assessment, CaseRecord } from './types.js'
 import { GROUND_LABELS, readGrounds } from './caseLogic.js'
 import type { PrecedentResult } from './precedents.js'
+import { aiEnabled } from './aiSwitch.js'
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
 
@@ -27,8 +28,8 @@ export async function generateAiAssessment(
   rules: Omit<Assessment, 'ai' | 'paidAt' | 'receiptId'>,
   precedents: PrecedentResult[],
 ): Promise<AiAssessment | null> {
+  if (!aiEnabled()) return null
   const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return null
 
   try {
     const client = new Anthropic({ apiKey })
@@ -152,8 +153,8 @@ function placeholders(s: string): string[] {
 }
 
 function newClient(): Anthropic | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  return apiKey ? new Anthropic({ apiKey }) : null
+  if (!aiEnabled()) return null
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 }
 
 function extractJson(msg: Anthropic.Message): string {

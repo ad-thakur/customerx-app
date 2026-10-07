@@ -27,6 +27,7 @@ import {
   sendLoginEmail,
   userForSession,
 } from './auth.js'
+import { aiEnabled, aiStatus } from './aiSwitch.js'
 import { brandRouter } from './brandRoutes.js'
 import { initBrandTables } from './brandStore.js'
 import { socialRouter } from './socialRoutes.js'
@@ -50,7 +51,7 @@ app.use(brandRouter)
 app.use(socialRouter)
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, ai: Boolean(process.env.ANTHROPIC_API_KEY) })
+  res.json({ ok: true, ai: aiEnabled(), aiStatus: aiStatus() })
 })
 
 // ---------------------------------------------------------------------------
@@ -366,7 +367,7 @@ app.put('/api/cases/:id/intake', async (req, res) => {
 
 // AI drafting help for the notice — both are advisory only. The endpoints
 // return suggestions the frontend shows for the user to accept or discard;
-// nothing here writes to the notice. If no ANTHROPIC_API_KEY is set they answer
+// nothing here writes to the notice. While AI is switched off they answer
 // { aiDisabled: true } and the frontend hides the buttons. Refused once the
 // notice is dispatched (the document is then fixed).
 app.post('/api/cases/:id/notice/ai-fill', async (req, res) => {
@@ -377,7 +378,7 @@ app.post('/api/cases/:id/notice/ai-fill', async (req, res) => {
       res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
       return
     }
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!aiEnabled()) {
       res.json({ aiDisabled: true, suggestions: [] })
       return
     }
@@ -409,7 +410,7 @@ app.post('/api/cases/:id/notice/ai-reword', async (req, res) => {
       res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
       return
     }
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!aiEnabled()) {
       res.json({ aiDisabled: true, variants: [] })
       return
     }
@@ -586,7 +587,7 @@ initDb()
   .then(() => {
     app.listen(port, () => {
       console.log(`Consumer X API listening on :${port}`)
-      console.log(`AI assessment layer: ${process.env.ANTHROPIC_API_KEY ? 'enabled' : 'disabled (no ANTHROPIC_API_KEY)'}`)
+      console.log(`AI layer: ${aiStatus()} (set AI_ENABLED=true with an ANTHROPIC_API_KEY to turn it on)`)
     })
   })
   .catch((err) => {

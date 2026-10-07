@@ -540,8 +540,8 @@ function PrecedentReview({
   if (!r || r.status === 'disabled') {
     return shell(
       <p className="text-sm text-ink-soft">
-        AI review of comparable judgments is off (no ANTHROPIC_API_KEY on the server). The statistical estimate is shown
-        alongside.
+        AI review of comparable judgments isn’t switched on yet. The statistical estimate, from the same judgments
+        database, is shown alongside.
       </p>,
     )
   }
