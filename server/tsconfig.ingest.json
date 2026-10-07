@@ -2,5 +2,5 @@
   // Builds only the ingest entry points (and what they import), so an ingest
   // job on Railway doesn't depend on the API server compiling.
   "extends": "./tsconfig.json",
-  "include": ["src/ingest.ts", "src/ingestState.ts", "src/pdf-parse.d.ts"]
+  "include": ["src/ingest.ts", "src/ingestState.ts", "src/ocr.ts", "src/pdf-parse.d.ts"]
 }

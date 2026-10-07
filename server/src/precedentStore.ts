@@ -319,6 +319,64 @@ export async function existingCaseNumbers(): Promise<Set<string>> {
   return new Set(res.rows.map((r) => r.case_number))
 }
 
+/* -------------------------------------------------------------------------- */
+/* OCR backfill                                                               */
+/*                                                                            */
+/* Rows whose order exists on e-Jagriti (orderAvailabilityStatusId 2) but came */
+/* back as a scanned PDF with no text layer. Status 1 means no order was ever  */
+/* uploaded, so there is nothing to OCR for those.                            */
+/* -------------------------------------------------------------------------- */
+
+export interface OcrCandidate {
+  caseNumber: string
+  commissionId: number
+  category: string
+  /** YYYY-MM-DD, or null when the row has no disposal date. */
+  disposalDate: string | null
+}
+
+/** Text-less rows with a scanned order, minus those an earlier OCR pass tried. */
+export async function listOcrCandidates(): Promise<OcrCandidate[]> {
+  const res = await pool.query<{
+    case_number: string
+    commission_id: string | null
+    category: string
+    disposal_date: Date | null
+  }>(
+    `SELECT p.case_number, p.raw_meta->>'commissionId' AS commission_id, p.category, p.disposal_date
+       FROM precedent_cases p
+      WHERE p.judgment_text IS NULL
+        AND p.raw_meta->>'orderAvailabilityStatusId' = '2'
+        AND NOT EXISTS (SELECT 1 FROM ingest_progress g WHERE g.task = 'ocr:' || p.case_number)
+      ORDER BY p.disposal_date DESC NULLS LAST`,
+  )
+  return res.rows.map((r) => ({
+    caseNumber: r.case_number,
+    // NCDRC rows from the category ingest predate the commissionId field.
+    commissionId: r.commission_id ? Number(r.commission_id) : 11000000,
+    category: r.category,
+    disposalDate: r.disposal_date ? r.disposal_date.toISOString().slice(0, 10) : null,
+  }))
+}
+
+/**
+ * Fill judgment_text (and the related_categories derived from it), but only
+ * while it is still empty, so a re-run can't clobber anything.
+ */
+export async function fillJudgmentText(
+  caseNumber: string,
+  text: string,
+  relatedCategories: string[],
+): Promise<boolean> {
+  const res = await pool.query(
+    `UPDATE precedent_cases
+        SET judgment_text = $2, related_categories = $3, ingested_at = now()
+      WHERE case_number = $1 AND judgment_text IS NULL`,
+    [caseNumber, text, relatedCategories],
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
 export async function closePrecedentPool(): Promise<void> {
   await pool.end()
 }
