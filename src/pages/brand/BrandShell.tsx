@@ -112,6 +112,14 @@ export default function BrandShell() {
                     Complaints
                   </NavLink>
                   <NavLink
+                    to="/brand/social"
+                    className={({ isActive }) =>
+                      `px-2 py-1 rounded ${isActive ? 'text-marigold' : 'text-paper/80 hover:text-paper'}`
+                    }
+                  >
+                    Social
+                  </NavLink>
+                  <NavLink
                     to="/brand/settings"
                     className={({ isActive }) =>
                       `px-2 py-1 rounded ${isActive ? 'text-marigold' : 'text-paper/80 hover:text-paper'}`

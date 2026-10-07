@@ -10,6 +10,7 @@
 //   email   — the brand forwards its complaints inbox to our inbound webhook
 //   hosted  — the consumer uses our hosted form at /complain/:slug
 //   manual  — someone on the brand's team pastes a complaint into the dashboard
+//   social  — a public post on X or Reddit, converted from the Social tab
 //
 // Each complaint carries a consumer token. The brand's first response includes
 // a tracking link built from it, which is how the consumer sees replies, adds
@@ -27,7 +28,7 @@ const pool = new Pool({
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
 })
 
-export type ComplaintSource = 'web' | 'email' | 'hosted' | 'manual'
+export type ComplaintSource = 'web' | 'email' | 'hosted' | 'manual' | 'social'
 
 export type ComplaintStatus =
   | 'new' // received, not yet answered
@@ -69,6 +70,8 @@ export interface Brand {
   grossMargin: number
   /** Public key for the website form; safe to embed in a page. */
   intakeKey: string
+  /** Social listening add-on (X and Reddit mentions), billed separately. */
+  socialEnabled: boolean
   createdAt: string
 }
 
@@ -108,6 +111,7 @@ export async function initBrandTables(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `)
+  await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS social_enabled BOOLEAN NOT NULL DEFAULT false`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS brand_members (
       brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
@@ -160,6 +164,7 @@ interface BrandRow {
   aliases: string[]
   gross_margin: number
   intake_key: string
+  social_enabled: boolean
   created_at: Date
 }
 
@@ -171,6 +176,7 @@ function toBrand(r: BrandRow): Brand {
     aliases: r.aliases,
     grossMargin: Number(r.gross_margin),
     intakeKey: r.intake_key,
+    socialEnabled: r.social_enabled,
     createdAt: r.created_at.toISOString(),
   }
 }
@@ -211,15 +217,16 @@ export async function createBrand(input: {
 
 export async function updateBrand(
   id: string,
-  patch: { name?: string; aliases?: string[]; grossMargin?: number },
+  patch: { name?: string; aliases?: string[]; grossMargin?: number; socialEnabled?: boolean },
 ): Promise<Brand | null> {
   const res = await pool.query<BrandRow>(
     `UPDATE brands SET
        name = COALESCE($2, name),
        aliases = COALESCE($3, aliases),
-       gross_margin = COALESCE($4, gross_margin)
+       gross_margin = COALESCE($4, gross_margin),
+       social_enabled = COALESCE($5, social_enabled)
      WHERE id = $1 RETURNING *`,
-    [id, patch.name ?? null, patch.aliases ?? null, patch.grossMargin ?? null],
+    [id, patch.name ?? null, patch.aliases ?? null, patch.grossMargin ?? null, patch.socialEnabled ?? null],
   )
   return res.rows.length ? toBrand(res.rows[0]) : null
 }

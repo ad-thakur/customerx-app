@@ -253,6 +253,12 @@ export default function BrandComplaint() {
                   Record response
                 </button>
               </div>
+              {c.source === 'social' && !c.consumerEmail && (
+                <p className="mt-4 text-xs border-l-2 border-seal pl-3 text-ink">
+                  This came from a public post, so there’s no email on file. Send this response and the tracking link by
+                  direct message — never in a public reply, since anyone with the link can open the complaint.
+                </p>
+              )}
               <div className="mt-4 text-xs text-ink-soft bg-paper-dim/60 rounded p-3">
                 <p className="mb-1">
                   <b className="text-ink">Consumer tracking link</b> — included in drafts. The consumer can read your replies, add

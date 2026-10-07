@@ -29,6 +29,8 @@ import {
 } from './auth.js'
 import { brandRouter } from './brandRoutes.js'
 import { initBrandTables } from './brandStore.js'
+import { socialRouter } from './socialRoutes.js'
+import { initSocialTables } from './social.js'
 import type { CaseRecord, DispatchMethod, IntakeData, RoutingResult } from './types.js'
 
 const app = express()
@@ -45,6 +47,7 @@ app.use(cors({ origin: origins.includes('*') ? true : origins }))
 
 // Brand dashboard, complaint intake and consumer tracking links.
 app.use(brandRouter)
+app.use(socialRouter)
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, ai: Boolean(process.env.ANTHROPIC_API_KEY) })
@@ -579,6 +582,7 @@ initDb()
   .then(() => initPrecedentTable())
   .then(() => initAuthTables())
   .then(() => initBrandTables())
+  .then(() => initSocialTables())
   .then(() => {
     app.listen(port, () => {
       console.log(`Consumer X API listening on :${port}`)

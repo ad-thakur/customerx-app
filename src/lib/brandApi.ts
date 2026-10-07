@@ -27,7 +27,7 @@ async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export type ComplaintSource = 'web' | 'email' | 'hosted' | 'manual'
+export type ComplaintSource = 'web' | 'email' | 'hosted' | 'manual' | 'social'
 export type ComplaintStatus = 'new' | 'responded' | 'consumer_replied' | 'resolved' | 'escalated' | 'closed'
 export type OfferKind = 'refund' | 'replacement' | 'repair' | 'service' | 'gift_card' | 'promo' | 'partial_refund'
 export type Outcome = 'consumer' | 'business' | 'settled' | 'withdrawn' | 'unknown'
@@ -39,6 +39,7 @@ export interface Brand {
   aliases: string[]
   grossMargin: number
   intakeKey: string
+  socialEnabled: boolean
   createdAt: string
 }
 
@@ -259,6 +260,81 @@ export const seedDemo = (brandId: string) =>
   api<{ added: number }>(`/api/brand/${brandId}/demo-seed`, { method: 'POST' })
 
 /* -------------------------------------------------------------------------- */
+/* Social listening add-on                                                    */
+/* -------------------------------------------------------------------------- */
+
+export type Platform = 'x' | 'reddit'
+export type MentionKind = 'complaint' | 'question' | 'praise' | 'other'
+export type MentionStatus = 'new' | 'replied' | 'converted' | 'dismissed'
+
+export interface Mention {
+  id: string
+  platform: Platform
+  externalId: string | null
+  url: string | null
+  authorHandle: string
+  authorName: string
+  authorFollowers: number
+  community: string | null
+  text: string
+  postedAt: string
+  likes: number
+  reposts: number
+  replies: number
+  kind: MentionKind
+  visibility: number
+  status: MentionStatus
+  reply: { text: string; at: string; author: string } | null
+  complaintId: string | null
+  sample: boolean
+}
+
+export type SocialFeed =
+  | { enabled: false }
+  | {
+      enabled: true
+      formUrl: string
+      connections: { x: { connected: boolean }; reddit: { connected: boolean; keywords: string[] } }
+      stats: {
+        last7d: number
+        complaints: number
+        unanswered: number
+        highVisibility: number
+        converted: number
+        reach: number
+      }
+      mentions: Mention[]
+    }
+
+export const loadSocial = (brandId: string) => api<SocialFeed>(`/api/brand/${brandId}/social`)
+
+export const enableSocial = (brandId: string) =>
+  api<Brand>(`/api/brand/${brandId}/social/enable`, { method: 'POST' })
+
+export const seedSocial = (brandId: string) =>
+  api<{ added: number }>(`/api/brand/${brandId}/social/demo-seed`, { method: 'POST' })
+
+export const draftSocial = (brandId: string, mid: string) =>
+  api<{ text: string }>(`/api/brand/${brandId}/social/${mid}/draft`, { method: 'POST' })
+
+export const replySocial = (brandId: string, mid: string, text: string) =>
+  api<{ mention: Mention; postLink: string | null }>(`/api/brand/${brandId}/social/${mid}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  })
+
+export const convertSocial = (brandId: string, mid: string) =>
+  api<{ mention: Mention; complaintId: string }>(`/api/brand/${brandId}/social/${mid}/convert`, {
+    method: 'POST',
+  })
+
+export const setMentionStatus = (brandId: string, mid: string, status: 'dismissed' | 'new') =>
+  api<{ mention: Mention }>(`/api/brand/${brandId}/social/${mid}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  })
+
+/* -------------------------------------------------------------------------- */
 /* Hosted form and consumer tracking                                          */
 /* -------------------------------------------------------------------------- */
 
@@ -326,6 +402,7 @@ export const SOURCE_LABEL: Record<ComplaintSource, string> = {
   email: 'Email',
   hosted: 'ConsumerX form',
   manual: 'Added manually',
+  social: 'Social media',
 }
 
 export const STATUS_LABEL: Record<ComplaintStatus, string> = {

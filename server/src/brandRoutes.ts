@@ -44,15 +44,15 @@ export const brandRouter = express.Router()
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function frontendBase(): string {
+export function frontendBase(): string {
   return ((process.env.FRONTEND_ORIGIN ?? '').split(',')[0].trim() || 'http://localhost:5173').replace(/\/$/, '')
 }
 
-function trackUrl(id: string, token: string): string {
+export function trackUrl(id: string, token: string): string {
   return `${frontendBase()}/track/${id}?t=${token}`
 }
 
-function str(v: unknown, max: number): string {
+export function str(v: unknown, max: number): string {
   return typeof v === 'string' ? v.trim().slice(0, max) : ''
 }
 
@@ -84,7 +84,7 @@ function newComplaintFrom(body: Record<string, unknown>, source: NewComplaint['s
 }
 
 /** Resolves the signed-in brand member, or answers 401/403 itself. */
-async function requireMember(
+export async function requireMember(
   req: express.Request,
   res: express.Response,
 ): Promise<{ email: string; brand: Brand } | null> {
@@ -117,7 +117,7 @@ async function memberComplaint(
 }
 
 /** Facts → numbers → prose. Saved on the complaint; returns the updated row. */
-async function runAnalysis(complaint: Complaint, brand: Brand): Promise<Complaint> {
+export async function runAnalysis(complaint: Complaint, brand: Brand): Promise<Complaint> {
   const facts = await extractFacts(complaint)
   const core = await analyseComplaint(complaint, brand, facts)
   const narrative = await writeNarrative(complaint, brand, core)
@@ -208,6 +208,7 @@ brandRouter.patch('/api/brand/:brandId', async (req, res) => {
         ? body.aliases.map((a) => str(a, 80)).filter(Boolean).slice(0, 12)
         : undefined,
       grossMargin: Number.isFinite(margin) && margin >= 0 && margin < 1 ? margin : undefined,
+      socialEnabled: typeof body.socialEnabled === 'boolean' ? body.socialEnabled : undefined,
     })
     res.json(brand)
   } catch (err) {

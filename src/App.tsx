@@ -22,6 +22,7 @@ import BrandShell from './pages/brand/BrandShell'
 import BrandQueue from './pages/brand/BrandQueue'
 import BrandComplaint from './pages/brand/BrandComplaint'
 import BrandSettings from './pages/brand/BrandSettings'
+import BrandSocial from './pages/brand/BrandSocial'
 import TrackComplaint from './pages/TrackComplaint'
 import ComplainTo from './pages/ComplainTo'
 
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/brand" element={<BrandShell />}>
             <Route index element={<BrandQueue />} />
             <Route path="c/:id" element={<BrandComplaint />} />
+            <Route path="social" element={<BrandSocial />} />
             <Route path="settings" element={<BrandSettings />} />
           </Route>
         </Routes>
