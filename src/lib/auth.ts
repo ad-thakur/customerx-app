@@ -58,8 +58,11 @@ async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 /* -------------------------------------------------------------------------- */
 
 /** Emails a sign-in link. `devLink` comes back only when the server echoes it. */
-export function requestSignInLink(email: string): Promise<{ ok: true; devLink?: string }> {
-  return api('/api/auth/request-link', { method: 'POST', body: JSON.stringify({ email }) })
+export function requestSignInLink(
+  email: string,
+  next?: string,
+): Promise<{ ok: true; devLink?: string }> {
+  return api('/api/auth/request-link', { method: 'POST', body: JSON.stringify({ email, next }) })
 }
 
 /**

@@ -27,14 +27,24 @@ import {
   sendLoginEmail,
   userForSession,
 } from './auth.js'
+import { brandRouter } from './brandRoutes.js'
+import { initBrandTables } from './brandStore.js'
 import type { CaseRecord, DispatchMethod, IntakeData, RoutingResult } from './types.js'
 
 const app = express()
 app.use(express.json({ limit: '1mb' }))
 
+// Complaint intake is posted from brands' own websites, so it accepts any
+// origin. Registered before the app-wide CORS rule so it also answers the
+// preflight; it only exposes the intake routes.
+app.use('/api/intake', cors({ origin: true }))
+
 // CORS: set FRONTEND_ORIGIN to your Vercel URL (comma-separated for several).
 const origins = (process.env.FRONTEND_ORIGIN ?? '*').split(',').map((s) => s.trim())
 app.use(cors({ origin: origins.includes('*') ? true : origins }))
+
+// Brand dashboard, complaint intake and consumer tracking links.
+app.use(brandRouter)
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, ai: Boolean(process.env.ANTHROPIC_API_KEY) })
@@ -110,7 +120,11 @@ app.post('/api/auth/request-link', async (req, res) => {
     }
     const token = await issueLoginToken(email)
     const base = (process.env.FRONTEND_ORIGIN ?? '').split(',')[0].trim() || 'http://localhost:5173'
-    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`
+    // Optional same-site path to land on after sign-in (e.g. /brand). Only a
+    // plain path is accepted, never another origin.
+    const next = String((req.body as { next?: string }).next ?? '')
+    const nextParam = /^\/[A-Za-z0-9/_-]*$/.test(next) ? `&next=${encodeURIComponent(next)}` : ''
+    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}${nextParam}`
     const sent = await sendLoginEmail(email, link)
     // Report delivery failure honestly rather than showing "check your email"
     // for a message that was never sent. This says nothing about whether the
@@ -564,6 +578,7 @@ const port = Number(process.env.PORT ?? 3001)
 initDb()
   .then(() => initPrecedentTable())
   .then(() => initAuthTables())
+  .then(() => initBrandTables())
   .then(() => {
     app.listen(port, () => {
       console.log(`Consumer X API listening on :${port}`)

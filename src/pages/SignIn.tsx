@@ -33,7 +33,7 @@ export default function SignIn() {
     if (!email.trim()) return
     setState('sending')
     setError(null)
-    requestSignInLink(email.trim())
+    requestSignInLink(email.trim(), params.get('next') ?? undefined)
       .then((r) => {
         setDevLink(r.devLink ?? null)
         setState('sent')

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import Logo from './Logo'
 
 export default function Footer() {
@@ -25,6 +26,12 @@ export default function Footer() {
         <div>
           <p className="text-ink font-medium mb-2">Grievance Officer</p>
           <p>grievance@consumerx.co.in · Data handled per the DPDP Act, 2023</p>
+          <p className="mt-4">
+            Run a consumer brand?{' '}
+            <Link to="/brand" className="text-ink underline hover:text-seal">
+              Consumer X for brands
+            </Link>
+          </p>
         </div>
       </div>
     </footer>
