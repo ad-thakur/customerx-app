@@ -5,6 +5,7 @@ import { useAuth } from '../lib/AuthContext'
 
 const NAV = [
   { label: 'About us', to: '/about', router: true },
+  { label: 'Consumer watch', to: '/news', router: true },
   { label: 'My cases', to: '/cases', router: true },
   { label: 'Claim aggregation', to: '/claim-aggregation', router: true },
   { label: 'How it works', to: '/#how-it-works', router: false },
