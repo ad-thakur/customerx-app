@@ -127,40 +127,58 @@ async function memberComplaint(
 export type AnalysisTrigger = 'added' | 'intake' | 'rerun' | 'consumer_update' | 'demo' | 'social'
 
 /**
- * Facts → numbers → prose, saved on the complaint. The AI steps draw one
- * analysis from the brand's monthly allowance (see plans.ts); when it is used
- * up, the complaint still gets the statistical analysis, without the AI.
+ * The standard analysis every complaint gets on arrival: facts by keyword
+ * rules, then the statistical estimate, merit check, exposure and actions.
+ * No AI, so it is free and unmetered. AI runs only when the brand asks for it
+ * (runAiAnalysis). An earlier AI review is carried over — marked outdated if
+ * the consumer has since changed the complaint.
  */
 export async function runAnalysis(
   complaint: Complaint,
   brand: Brand,
   trigger: AnalysisTrigger,
 ): Promise<Complaint> {
-  const aiOn = aiEnabled()
-  const usageId = aiOn ? await claimAnalysis(brand.id, analysisLimit(brand), complaint.id, trigger) : null
-  const useAi = usageId !== null
-  const meter = newMeter()
+  const core = await analyseComplaint(complaint, brand, extractFactsByRules(complaint))
+  const prior = complaint.analysis?.review ?? null
+  const review =
+    prior && (prior.status === 'done' || prior.status === 'pending')
+      ? { ...prior, outdated: prior.outdated || (trigger === 'consumer_update' && prior.status === 'done') }
+      : null
+  const analysis: ComplaintAnalysis = { ...core, narrative: complaint.analysis?.narrative ?? null, review }
+  return (await patchComplaint(complaint.id, { analysis })) ?? complaint
+}
 
-  const facts = useAi ? await extractFacts(complaint, meter) : extractFactsByRules(complaint)
+export type AiRunResult =
+  | { ok: true; complaint: Complaint }
+  | { ok: false; reason: 'switched_off' | 'limit' | 'busy' }
+
+/**
+ * The AI case analysis, run when the brand clicks for it. Draws one analysis
+ * from the brand's monthly allowance (plans.ts), re-reads the complaint with
+ * AI for better facts, writes the briefing, and starts the AI precedent
+ * review, which attaches itself when done.
+ */
+export async function runAiAnalysis(complaint: Complaint, brand: Brand): Promise<AiRunResult> {
+  if (!aiEnabled()) return { ok: false, reason: 'switched_off' }
+  if (complaint.analysis?.review?.status === 'pending') return { ok: false, reason: 'busy' }
+  const usageId = await claimAnalysis(brand.id, analysisLimit(brand), complaint.id, 'ai_request')
+  if (usageId === null) return { ok: false, reason: 'limit' }
+
+  const meter = newMeter()
+  const facts = await extractFacts(complaint, meter)
   const core = await analyseComplaint(complaint, brand, facts)
-  const narrative = useAi ? await writeNarrative(complaint, brand, core, meter) : null
+  const narrative = await writeNarrative(complaint, brand, core, meter)
   const analysis: ComplaintAnalysis = {
     ...core,
     narrative,
-    review: {
-      status: !aiOn ? 'disabled' : useAi ? 'pending' : 'limit',
-      generatedAt: new Date().toISOString(),
-    },
+    review: { status: 'pending', generatedAt: new Date().toISOString() },
   }
   const saved = (await patchComplaint(complaint.id, { analysis })) ?? complaint
-  if (usageId !== null) {
-    await addUsageTokens(usageId, meter.input, meter.output)
-    // The precedent review takes tens of seconds (it searches and reads
-    // judgments), so it runs after the rest of the analysis is saved and
-    // attaches itself when done.
-    void attachReview(saved, brand, analysis, usageId)
-  }
-  return saved
+  await addUsageTokens(usageId, meter.input, meter.output)
+  // The precedent review takes tens of seconds (it searches and reads
+  // judgments), so it runs after the rest is saved and attaches when done.
+  void attachReview(saved, brand, analysis, usageId)
+  return { ok: true, complaint: saved }
 }
 
 /** At most a few reviews at once — a demo seed would otherwise start nine. */
@@ -183,10 +201,12 @@ async function attachReview(complaint: Complaint, brand: Brand, analysis: Compla
   const meter = newMeter()
   const review = await withReviewSlot(() => reviewPrecedents(complaint, brand, analysis.facts, meter))
   await addUsageTokens(usageId, meter.input, meter.output).catch(() => {})
-  // Don't overwrite a newer analysis (e.g. re-run after the consumer added details).
+  // Attach to whatever analysis is current — a statistical re-run may have
+  // replaced the one this started from, carrying the pending review over.
   const current = await findComplaint(complaint.id)
-  if (current?.complaint.analysis?.generatedAt !== analysis.generatedAt) return
-  await patchComplaint(complaint.id, { analysis: { ...current.complaint.analysis, review } })
+  const a = current?.complaint.analysis
+  if (!a || (a.generatedAt !== analysis.generatedAt && a.review?.status !== 'pending')) return
+  await patchComplaint(complaint.id, { analysis: { ...a, review } })
 }
 
 /** Fire-and-forget for intake routes, which should answer the sender at once. */
@@ -303,6 +323,16 @@ brandRouter.post('/api/brand/:brandId/members', async (req, res) => {
 /* Complaints                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * What the brand can expect to pay out on a complaint if it is filed and not
+ * settled: chance the consumer succeeds × the midpoint of the likely award.
+ * Excludes the brand's own defence costs, which it pays either way.
+ */
+function expectedLiability(a: ComplaintAnalysis): number {
+  const mid = (a.exposure.awardIfLost.low + a.exposure.awardIfLost.high) / 2
+  return Math.round((a.prediction.consumerWinPct / 100) * mid)
+}
+
 /** Queue row: everything the list needs, without the full analysis payload. */
 function listView(c: Complaint) {
   const a = c.analysis
@@ -316,11 +346,13 @@ function listView(c: Complaint) {
     subject: c.subject,
     product: a?.facts.product || c.product,
     summary: a?.facts.summary ?? c.body.slice(0, 200),
-    amount: a?.exposure.principal ?? c.amountClaimed,
+    amount: a?.exposure.principal || c.amountClaimed || null, // 0 = unknown
     firstResponseAt: c.firstResponseAt,
     offer: c.offer,
     analysed: Boolean(a),
     consumerWinPct: a?.prediction.consumerWinPct ?? null,
+    liability: a ? expectedLiability(a) : null,
+    aiReview: a?.review?.status ?? null,
     frivolity: a?.frivolity.label ?? null,
     priority: a?.priority ?? null,
     expectedCost: a?.exposure.expectedCostIfContested ?? null,
@@ -357,6 +389,9 @@ brandRouter.get('/api/brand/:brandId/complaints', async (req, res) => {
           (c) => c.status === 'new' && Date.now() - new Date(c.receivedAt).getTime() > 48 * 3_600_000,
         ).length,
         highRisk: open.filter((c) => (c.analysis?.prediction.consumerWinPct ?? 0) >= 60).length,
+        received30d: all.filter((c) => Date.now() - new Date(c.receivedAt).getTime() <= 30 * 86_400_000).length,
+        openValue: open.reduce((s2, c) => s2 + (c.analysis?.exposure.principal ?? c.amountClaimed ?? 0), 0),
+        openLiability: open.reduce((s2, c) => s2 + (c.analysis ? expectedLiability(c.analysis) : 0), 0),
         openExposure: open.reduce((s, c) => s + (c.analysis?.exposure.expectedCostIfContested ?? 0), 0),
         resolved: all.filter((c) => c.status === 'resolved').length,
         resolutionRate: closed.length ? all.filter((c) => c.status === 'resolved').length / closed.length : null,
@@ -408,6 +443,28 @@ brandRouter.post('/api/brand/:brandId/complaints/:id/analyse', async (req, res) 
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Could not analyse the complaint' })
+  }
+})
+
+/** The AI case analysis button. Uses one analysis from the brand's allowance. */
+brandRouter.post('/api/brand/:brandId/complaints/:id/ai-analysis', async (req, res) => {
+  try {
+    const m = await memberComplaint(req, res)
+    if (!m) return
+    const r = await runAiAnalysis(m.complaint, m.brand)
+    if (!r.ok) {
+      const msg = {
+        switched_off: 'AI analysis isn’t switched on yet',
+        limit: 'Your monthly allowance of AI analyses is used up',
+        busy: 'An AI analysis of this complaint is already running',
+      }[r.reason]
+      res.status(r.reason === 'limit' ? 402 : 409).json({ error: msg, reason: r.reason })
+      return
+    }
+    res.json({ ...r.complaint, trackUrl: trackUrl(r.complaint.id, m.token) })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not run the AI analysis' })
   }
 })
 

@@ -92,6 +92,7 @@ export type ReviewOutcome = 'consumer_likely' | 'partly_consumer' | 'brand_likel
 
 export interface AiReview {
   status: 'pending' | 'done' | 'failed' | 'disabled' | 'limit'
+  outdated?: boolean
   outcome?: ReviewOutcome
   confidence?: 'low' | 'medium' | 'high'
   suggestion?: string
@@ -196,6 +197,8 @@ export interface ComplaintRow {
   offer: Offer | null
   analysed: boolean
   consumerWinPct: number | null
+  liability: number | null
+  aiReview: AiReview['status'] | null
   frivolity: string | null
   priority: ComplaintAnalysis['priority'] | null
   expectedCost: number | null
@@ -209,6 +212,9 @@ export interface QueueStats {
   unanswered: number
   overdue: number
   highRisk: number
+  received30d: number
+  openValue: number
+  openLiability: number
   openExposure: number
   resolved: number
   resolutionRate: number | null
@@ -265,6 +271,10 @@ export const loadComplaint = (brandId: string, id: string) =>
 
 export const reanalyse = (brandId: string, id: string) =>
   api<Complaint>(`/api/brand/${brandId}/complaints/${id}/analyse`, { method: 'POST' })
+
+/** The AI case analysis button; uses one analysis from the brand's allowance. */
+export const runAiAnalysis = (brandId: string, id: string) =>
+  api<Complaint>(`/api/brand/${brandId}/complaints/${id}/ai-analysis`, { method: 'POST' })
 
 export const draftResponse = (brandId: string, id: string, actionId: string) =>
   api<{ text: string; offer: { kind: OfferKind; value: number } | null }>(

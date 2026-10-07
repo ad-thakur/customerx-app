@@ -6,6 +6,8 @@ import {
   ago,
   draftResponse,
   loadComplaint,
+  loadUsage,
+  runAiAnalysis,
   OFFER_LABEL,
   reanalyse,
   respond,
@@ -14,6 +16,7 @@ import {
   SOURCE_LABEL,
   type ActionOption,
   type AiReview,
+  type Usage,
   type Complaint,
   type ComplaintAnalysis,
   type OfferKind,
@@ -91,6 +94,21 @@ export default function BrandComplaint() {
       .finally(() => setBusy(false))
   }
 
+  const [usage, setUsage] = useState<Usage | null>(null)
+  const [aiStarting, setAiStarting] = useState(false)
+  useEffect(() => {
+    loadUsage(brand.id).then(setUsage).catch(() => setUsage(null))
+  }, [brand.id, c?.analysis?.review?.status])
+
+  const runAi = () => {
+    setAiStarting(true)
+    setError(null)
+    runAiAnalysis(brand.id, id)
+      .then(setC)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setAiStarting(false))
+  }
+
   const rerun = () => {
     setBusy(true)
     reanalyse(brand.id, id)
@@ -162,7 +180,9 @@ export default function BrandComplaint() {
             <p className="whitespace-pre-wrap text-ink leading-relaxed text-[15px]">{c.body}</p>
           </section>
 
-          {a && <PrecedentReview r={a.review ?? null} brandName={brand.name} onRerun={rerun} busy={busy} />}
+          {a && (
+            <PrecedentReview r={a.review ?? null} usage={usage} brandName={brand.name} onRun={runAi} running={aiStarting} />
+          )}
 
           {c.offer && (
             <div
@@ -319,7 +339,7 @@ function Analysis({
       {/* Likelihood */}
       <section className="border border-line rounded-lg bg-white/80 p-5">
         <div className="flex justify-between items-start">
-          <p className="case-number text-[11px] text-ink-soft">STATISTICAL ESTIMATE · IF FILED</p>
+          <p className="case-number text-[11px] text-ink-soft">LIABILITY LIKELIHOOD · STATISTICAL</p>
           <button type="button" onClick={onRerun} disabled={busy} className="text-[11px] text-ink-soft underline hover:text-ink">
             Re-run
           </button>
@@ -514,46 +534,71 @@ const REVIEW_HEADLINE: Record<NonNullable<AiReview['outcome']>, { text: string; 
 
 function PrecedentReview({
   r,
+  usage,
   brandName,
-  onRerun,
-  busy,
+  onRun,
+  running,
 }: {
   r: AiReview | null
+  usage: Usage | null
   brandName: string
-  onRerun: () => void
-  busy: boolean
+  onRun: () => void
+  running: boolean
 }) {
+  const remaining = usage?.remaining ?? null
+  const blocked = !usage?.aiEnabled ? 'off' : remaining === 0 ? 'limit' : null
+  const allowance =
+    usage && usage.aiEnabled
+      ? remaining === null
+        ? usage.billingModel === 'pay_per_analysis' && usage.perAnalysisPrice !== null
+          ? `Billed at ${rupees(usage.perAnalysisPrice)}`
+          : 'Included in your plan'
+        : `Uses 1 of your ${remaining} remaining this month`
+      : null
+
+  const button = (label: string) => (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={onRun}
+        disabled={running || blocked !== null}
+        className="bg-ink text-paper rounded-full px-5 py-2.5 text-sm font-medium hover:bg-seal transition-colors disabled:opacity-40 disabled:hover:bg-ink"
+      >
+        {running ? 'Starting…' : label}
+      </button>
+      <span className="text-xs text-ink-soft">
+        {blocked === 'off' ? (
+          'AI analysis isn’t switched on yet.'
+        ) : blocked === 'limit' ? (
+          <>
+            Monthly allowance used up.{' '}
+            <Link to="/brand/usage" className="text-seal underline">
+              Plan & usage
+            </Link>
+          </>
+        ) : (
+          allowance
+        )}
+      </span>
+    </div>
+  )
+
   const shell = (body: React.ReactNode) => (
     <section className="border border-ink/25 rounded-lg bg-white p-5">
-      <div className="flex justify-between items-baseline gap-2 mb-2">
-        <p className="case-number text-[11px] text-seal">AI PRECEDENT REVIEW</p>
-        {r && r.status !== 'pending' && r.status !== 'disabled' && (
-          <button type="button" onClick={onRerun} disabled={busy} className="text-[11px] text-ink-soft underline hover:text-ink">
-            Re-run
-          </button>
-        )}
-      </div>
+      <p className="case-number text-[11px] text-seal mb-2">AI CASE ANALYSIS</p>
       {body}
     </section>
   )
 
-  if (!r || r.status === 'disabled') {
+  if (!r || r.status === 'disabled' || r.status === 'limit') {
     return shell(
-      <p className="text-sm text-ink-soft">
-        AI review of comparable judgments isn’t switched on yet. The statistical estimate, from the same judgments
-        database, is shown alongside.
-      </p>,
-    )
-  }
-  if (r.status === 'limit') {
-    return shell(
-      <p className="text-sm text-ink-soft">
-        Your monthly allowance of AI analyses is used up, so this complaint has the statistical estimate only.{' '}
-        <Link to="/brand/usage" className="text-seal underline">
-          See plan & usage
-        </Link>
-        .
-      </p>,
+      <>
+        <p className="text-sm text-ink mb-4 leading-relaxed">
+          Have AI research the judgments database for cases like this one, read them, and suggest how a consumer
+          commission would likely decide — with the precedents it relied on listed underneath.
+        </p>
+        {button('Run AI case analysis')}
+      </>,
     )
   }
   if (r.status === 'pending') {
@@ -565,12 +610,22 @@ function PrecedentReview({
     )
   }
   if (r.status === 'failed') {
-    return shell(<p className="text-sm text-ink-soft">The review didn’t complete ({r.error ?? 'unknown error'}). Try re-running it.</p>)
+    return shell(
+      <>
+        <p className="text-sm text-ink-soft mb-4">The analysis didn’t complete ({r.error ?? 'unknown error'}).</p>
+        {button('Try again')}
+      </>,
+    )
   }
 
   const h = REVIEW_HEADLINE[r.outcome ?? 'uncertain']
   return shell(
     <>
+      {r.outdated && (
+        <p className="text-xs border-l-2 border-marigold pl-3 text-ink mb-3">
+          The consumer has changed this complaint since this analysis ran. Run it again to include their update.
+        </p>
+      )}
       <p className={`font-display text-2xl font-semibold ${h.cls}`}>{h.text}</p>
       <p className="text-xs text-ink-soft mt-0.5 capitalize">{r.confidence} confidence</p>
       <p className="text-[15px] text-ink leading-relaxed mt-3 whitespace-pre-line">{r.suggestion}</p>
@@ -615,6 +670,7 @@ function PrecedentReview({
         {r.searches ?? 0} search{r.searches === 1 ? '' : 'es'} · {r.casesRead ?? 0} judgment{r.casesRead === 1 ? '' : 's'} read · {r.model}. A suggestion from published judgments,
         not legal advice.
       </p>
+      <div className="mt-4 pt-4 border-t border-line">{button('Run again')}</div>
     </>,
   )
 }

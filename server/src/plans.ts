@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
 // Brand plans and AI-analysis allowances.
 //
-// The billable unit is one AI analysis of one complaint: fact extraction,
-// the briefing and the AI precedent review together. Re-running an analysis
-// (by the brand, or automatically when the consumer adds details) uses
-// another one. When the month's allowance is used up, complaints still get
-// the statistical analysis — it costs nothing to run — just not the AI.
+// Every complaint gets the statistical analysis automatically, free. The
+// billable unit is one AI case analysis, which runs only when someone on the
+// brand's team clicks for it: AI fact extraction, the briefing and the AI
+// precedent review together. Running it again uses another. When the
+// month's allowance is used up, the button is disabled until it resets.
 //
 // The allowances below are PLACEHOLDERS: set them to whatever the commercial
 // plans turn out to be. A brand-specific limit (brands.monthly_limit)

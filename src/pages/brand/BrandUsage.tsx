@@ -27,9 +27,10 @@ export default function BrandUsage() {
         <p className="case-number text-seal text-xs mb-1">PLAN & USAGE</p>
         <h1 className="font-display text-3xl text-ink">AI analyses this month</h1>
         <p className="text-ink-soft mt-2">
-          Each AI analysis covers one complaint: reading it, the briefing, and the AI review of comparable judgments.
-          Re-running an analysis uses another. When the allowance runs out, new complaints still get the statistical
-          estimate — just without the AI.
+          Every complaint gets the statistical liability estimate automatically, free. An AI case analysis runs when
+          your team clicks <b className="text-ink">Run AI case analysis</b> on a complaint: AI reads it, researches
+          comparable judgments and suggests how it would be decided. Each click uses one analysis; when the allowance
+          runs out, the button is disabled until it resets.
         </p>
       </div>
 
@@ -74,7 +75,7 @@ export default function BrandUsage() {
         )}
         {u.limit !== null && u.remaining === 0 && (
           <p className="text-sm text-seal mt-3">
-            Allowance used up — new complaints are getting the statistical estimate only until {u.resetsOn}.
+            Allowance used up — AI case analysis is unavailable until {u.resetsOn}; statistical estimates continue.
             {ppa ? ' Raise your cap below to continue.' : ' Contact us to upgrade.'}
           </p>
         )}

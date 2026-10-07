@@ -43,6 +43,8 @@ export interface ReviewPrecedent {
 export interface AiReview {
   /** 'limit' = the brand's monthly AI-analysis allowance was used up. */
   status: 'pending' | 'done' | 'failed' | 'disabled' | 'limit'
+  /** The consumer has changed the complaint since this review ran. */
+  outdated?: boolean
   outcome?: ReviewOutcome
   confidence?: 'low' | 'medium' | 'high'
   suggestion?: string

@@ -46,7 +46,7 @@ export function WinMeter({ pct }: { pct: number | null }) {
   if (pct === null) return <span className="text-xs text-ink-soft">Analysing…</span>
   const tone = pct >= 60 ? 'bg-seal' : pct <= 40 ? 'bg-verdict' : 'bg-marigold'
   return (
-    <div className="flex items-center gap-2" title="Likelihood the consumer would succeed at a consumer commission">
+    <div className="flex items-center gap-2" title="Liability likelihood: chance the consumer would succeed at a consumer commission">
       <div className="w-16 h-1.5 rounded-full bg-line overflow-hidden">
         <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
@@ -185,27 +185,32 @@ export default function BrandQueue() {
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        <Kpi label="Open complaints" value={String(s.open)} />
+      {/* Headline: what's come in, what it's worth, what it could cost. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi
-          label="Awaiting first response"
+          label="Complaints received"
+          value={String(s.total)}
+          note={`${s.open} open · ${s.received30d} in the last 30 days`}
+        />
+        <Kpi label="Total value claimed" value={rupeesShort(s.openValue)} note="across open complaints" />
+        <Kpi
+          label="Expected liability"
+          value={rupeesShort(s.openLiability)}
+          note={`${s.highRisk} likely to succeed if filed`}
+          alert={s.highRisk > 0}
+        />
+        <Kpi
+          label="Awaiting your response"
           value={String(s.unanswered)}
-          note={s.overdue ? `${s.overdue} past 48h` : undefined}
+          note={s.overdue ? `${s.overdue} past 48 hours` : 'none overdue'}
           alert={s.overdue > 0}
         />
-        <Kpi label="Likely to succeed if filed" value={String(s.highRisk)} note="consumer-win ≥ 60%" alert={s.highRisk > 0} />
-        <Kpi label="Open exposure" value={rupeesShort(s.openExposure)} note="if all were contested" />
-        <Kpi
-          label="Avg first response"
-          value={s.avgFirstResponseHours === null ? '—' : `${s.avgFirstResponseHours.toFixed(1)}h`}
-        />
-        <Kpi
-          label="Resolved"
-          value={String(s.resolved)}
-          note={s.resolutionRate === null ? undefined : `${Math.round(s.resolutionRate * 100)}% of closed`}
-        />
       </div>
+      <p className="text-xs text-ink-soft mt-2 mb-8">
+        Expected liability = likelihood the consumer succeeds × the likely award, summed over open complaints.
+        {s.avgFirstResponseHours !== null && ` Average first response ${s.avgFirstResponseHours.toFixed(1)}h.`}
+        {s.resolutionRate !== null && ` ${s.resolved} resolved (${Math.round(s.resolutionRate * 100)}% of closed).`}
+      </p>
 
       {data.complaints.length === 0 ? (
         <div className="border border-line rounded-lg bg-white/70 p-10 text-center">
@@ -259,9 +264,9 @@ export default function BrandQueue() {
           <div className="border border-line rounded-lg bg-white/80 overflow-hidden">
             <div className="hidden xl:grid grid-cols-[minmax(0,1fr)_96px_110px_130px_220px_140px] gap-4 px-4 py-2.5 border-b border-line text-[11px] case-number text-ink-soft bg-paper-dim/50">
               <span>COMPLAINT</span>
-              <span>CLAIM</span>
-              <span>CONSUMER WIN</span>
-              <span>MERIT</span>
+              <span>VALUE</span>
+              <span>LIABILITY LIKELIHOOD</span>
+              <span>EXPECTED LIABILITY</span>
               <span>RECOMMENDED</span>
               <span>STATUS</span>
             </div>
@@ -289,24 +294,23 @@ export default function BrandQueue() {
                   </p>
                 </div>
                 <div className="text-sm text-ink xl:self-center">
-                  <span className="xl:hidden text-xs text-ink-soft">Claim </span>
+                  <span className="xl:hidden text-xs text-ink-soft">Value </span>
                   {rupees(c.amount)}
                 </div>
                 <div className="xl:self-center">
                   <WinMeter pct={c.consumerWinPct} />
-                </div>
-                <div className="xl:self-center text-xs">
-                  {c.frivolity && (
-                    <span
-                      className={
-                        c.frivolity === 'Appears genuine'
-                          ? 'text-ink'
-                          : c.frivolity === 'Possibly frivolous'
-                            ? 'text-verdict font-medium'
-                            : 'text-[#8a5f14]'
-                      }
-                    >
+                  {c.frivolity && c.frivolity !== 'Appears genuine' && (
+                    <p className={`text-[11px] mt-0.5 ${c.frivolity === 'Possibly frivolous' ? 'text-verdict' : 'text-[#8a5f14]'}`}>
                       {c.frivolity}
+                    </p>
+                  )}
+                </div>
+                <div className="xl:self-center text-sm">
+                  <span className="xl:hidden text-xs text-ink-soft">Expected liability </span>
+                  <span className={(c.consumerWinPct ?? 0) >= 60 ? 'text-seal font-medium' : 'text-ink'}>{rupees(c.liability)}</span>
+                  {c.aiReview === 'done' && (
+                    <span className="ml-1.5 case-number text-[9px] text-ink border border-ink/30 rounded px-1 py-px align-middle" title="AI case analysis available">
+                      AI
                     </span>
                   )}
                 </div>
@@ -319,7 +323,7 @@ export default function BrandQueue() {
           </div>
           <div className="mt-3 flex justify-between text-xs text-ink-soft">
             <span>
-              Consumer win = estimated likelihood the consumer succeeds if this is filed at a consumer commission.
+              Liability likelihood = estimated chance the consumer succeeds if this is filed at a consumer commission.
             </span>
             <button type="button" onClick={seed} disabled={seeding} className="underline hover:text-ink">
               {seeding ? 'Loading…' : 'Add sample complaints'}
