@@ -36,6 +36,7 @@ import {
   type OfferKind,
 } from './brandStore.js'
 import type { GroundId } from './types.js'
+import type { AiReview } from './brandReview.js'
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -133,6 +134,8 @@ export interface ComplaintAnalysis {
   actions: ActionOption[]
   priority: 'urgent' | 'high' | 'normal' | 'low'
   narrative: string | null
+  /** AI review of comparable judgments; runs after the rest, so may be pending. */
+  review?: AiReview | null
   generatedAt: string
 }
 

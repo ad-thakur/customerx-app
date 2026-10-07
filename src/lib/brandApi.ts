@@ -82,6 +82,30 @@ export interface ActionOption {
   recommended: boolean
 }
 
+export type ReviewOutcome = 'consumer_likely' | 'partly_consumer' | 'brand_likely' | 'uncertain'
+
+export interface AiReview {
+  status: 'pending' | 'done' | 'failed' | 'disabled'
+  outcome?: ReviewOutcome
+  confidence?: 'low' | 'medium' | 'high'
+  suggestion?: string
+  likelyRelief?: string | null
+  keyFactors?: string[]
+  precedents?: {
+    caseNumber: string
+    title: string
+    date: string | null
+    outcome: Outcome
+    relevance: string
+    relief: string | null
+  }[]
+  searches?: number
+  casesRead?: number
+  model?: string
+  generatedAt: string
+  error?: string
+}
+
 export interface ComplaintAnalysis {
   facts: {
     grounds: GroundId[]
@@ -122,6 +146,7 @@ export interface ComplaintAnalysis {
   actions: ActionOption[]
   priority: 'urgent' | 'high' | 'normal' | 'low'
   narrative: string | null
+  review?: AiReview | null
   generatedAt: string
 }
 

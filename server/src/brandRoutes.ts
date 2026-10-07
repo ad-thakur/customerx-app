@@ -15,6 +15,7 @@ import { userForSession, normaliseEmail } from './auth.js'
 import { analyseComplaint, type ComplaintAnalysis } from './brandAnalysis.js'
 import { extractFacts, templateResponse, writeNarrative, type ResponseMode } from './brandAi.js'
 import { demoComplaints } from './brandDemo.js'
+import { reviewPrecedents } from './brandReview.js'
 import {
   addMember,
   brandByKey,
@@ -121,8 +122,42 @@ export async function runAnalysis(complaint: Complaint, brand: Brand): Promise<C
   const facts = await extractFacts(complaint)
   const core = await analyseComplaint(complaint, brand, facts)
   const narrative = await writeNarrative(complaint, brand, core)
-  const analysis: ComplaintAnalysis = { ...core, narrative }
-  return (await patchComplaint(complaint.id, { analysis })) ?? complaint
+  const aiOn = Boolean(process.env.ANTHROPIC_API_KEY)
+  const analysis: ComplaintAnalysis = {
+    ...core,
+    narrative,
+    review: { status: aiOn ? 'pending' : 'disabled', generatedAt: new Date().toISOString() },
+  }
+  const saved = (await patchComplaint(complaint.id, { analysis })) ?? complaint
+  // The precedent review takes tens of seconds (it searches and reads
+  // judgments), so it runs after the rest of the analysis is saved and
+  // attaches itself when done.
+  if (aiOn) void attachReview(saved, brand, analysis)
+  return saved
+}
+
+/** At most a few reviews at once — a demo seed would otherwise start nine. */
+const REVIEW_CONCURRENCY = 3
+let reviewsRunning = 0
+const reviewQueue: (() => void)[] = []
+
+async function withReviewSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (reviewsRunning >= REVIEW_CONCURRENCY) await new Promise<void>((r) => reviewQueue.push(r))
+  reviewsRunning++
+  try {
+    return await fn()
+  } finally {
+    reviewsRunning--
+    reviewQueue.shift()?.()
+  }
+}
+
+async function attachReview(complaint: Complaint, brand: Brand, analysis: ComplaintAnalysis) {
+  const review = await withReviewSlot(() => reviewPrecedents(complaint, brand, analysis.facts))
+  // Don't overwrite a newer analysis (e.g. re-run after the consumer added details).
+  const current = await findComplaint(complaint.id)
+  if (current?.complaint.analysis?.generatedAt !== analysis.generatedAt) return
+  await patchComplaint(complaint.id, { analysis: { ...current.complaint.analysis, review } })
 }
 
 /** Fire-and-forget for intake routes, which should answer the sender at once. */

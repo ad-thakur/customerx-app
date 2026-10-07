@@ -20,6 +20,7 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
 import type { ComplaintAnalysis } from './brandAnalysis.js'
+import { discriminatingTerms } from './precedentStore.js'
 
 const { Pool } = pg
 
@@ -492,4 +493,87 @@ export async function precedentTails(caseNumbers: string[]): Promise<Map<string,
     [caseNumbers],
   )
   return new Map(res.rows.map((r) => [r.case_number, r.tail]))
+}
+
+/* -------------------------------------------------------------------------- */
+/* Corpus access for the AI precedent review                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface CorpusHit {
+  caseNumber: string
+  complainant: string | null
+  respondent: string | null
+  category: string
+  stage: string | null
+  judgmentDate: Date | string | null
+  snippet: string
+  tail: string
+}
+
+/**
+ * Full-text search for the review agent. Looser than searchLocalPrecedents:
+ * the agent reads and judges each result itself, so a lower rank floor and an
+ * optional party filter (e.g. only cases against this brand) are useful here.
+ * Categories still bound the search when given.
+ */
+export async function searchCorpus(opts: {
+  query: string
+  categories: string[] | null
+  party: string | null
+  limit: number
+}): Promise<CorpusHit[]> {
+  const terms = discriminatingTerms(opts.query)
+  const party = opts.party && opts.party.trim().length >= 4 ? `%${opts.party.trim().replace(/[%_\\]/g, (m) => `\\${m}`)}%` : null
+  if (!terms && !party) return []
+  const res = await pool.query<CorpusHit>(
+    `
+    WITH q AS (
+      SELECT CASE WHEN $1 = '' THEN NULL
+                  ELSE replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery END AS tsq
+    )
+    SELECT case_number AS "caseNumber", complainant, respondent, category, outcome AS stage,
+           judgment_date AS "judgmentDate",
+           CASE WHEN q.tsq IS NULL THEN left(coalesce(judgment_text, ''), 300)
+                ELSE ts_headline('english', coalesce(judgment_text, ''), q.tsq, 'MaxWords=45, MinWords=20') END AS snippet,
+           right(coalesce(judgment_text, ''), 1500) AS tail
+      FROM precedent_cases, q
+     WHERE ($2::text[] IS NULL OR category = ANY($2::text[]) OR related_categories && $2::text[])
+       AND ($3::text IS NULL OR respondent ILIKE $3 OR complainant ILIKE $3)
+       AND (q.tsq IS NULL OR (
+             to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
+         AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= 0.02))
+     ORDER BY CASE WHEN q.tsq IS NULL THEN 0
+                   ELSE ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) END DESC,
+              judgment_date DESC NULLS LAST
+     LIMIT $4
+    `,
+    [terms, opts.categories && opts.categories.length ? opts.categories : null, party, opts.limit],
+  )
+  return res.rows
+}
+
+/** One judgment: parties, dates, and the opening and operative parts of the text. */
+export async function readJudgment(caseNumber: string): Promise<{
+  caseNumber: string
+  commission: string
+  category: string
+  complainant: string | null
+  respondent: string | null
+  stage: string | null
+  filingDate: Date | string | null
+  judgmentDate: Date | string | null
+  opening: string
+  operative: string
+  length: number
+} | null> {
+  const res = await pool.query(
+    `SELECT case_number AS "caseNumber", commission, category, complainant, respondent,
+            outcome AS stage, filing_date AS "filingDate", judgment_date AS "judgmentDate",
+            left(coalesce(judgment_text, ''), 2500) AS opening,
+            right(coalesce(judgment_text, ''), 3000) AS operative,
+            length(coalesce(judgment_text, '')) AS length
+       FROM precedent_cases WHERE case_number = $1`,
+    [caseNumber],
+  )
+  return res.rows[0] ?? null
 }

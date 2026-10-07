@@ -13,6 +13,7 @@ import {
   setStatus,
   SOURCE_LABEL,
   type ActionOption,
+  type AiReview,
   type Complaint,
   type ComplaintAnalysis,
   type OfferKind,
@@ -41,12 +42,14 @@ export default function BrandComplaint() {
     window.scrollTo(0, 0)
   }, [id])
 
-  // Analysis of email/web complaints runs in the background — poll until it lands.
+  // Analysis of email/web complaints runs in the background, and the AI
+  // precedent review after it — poll until both have landed.
+  const waiting = c && (!c.analysis || c.analysis.review?.status === 'pending')
   useEffect(() => {
-    if (!c || c.analysis) return
-    const t = setTimeout(load, 2_500)
+    if (!waiting) return
+    const t = setTimeout(load, c?.analysis ? 4_000 : 2_500)
     return () => clearTimeout(t)
-  }, [c, load])
+  }, [waiting, c, load])
 
   // Composer state lives here so the action list can fill it.
   const [text, setText] = useState('')
@@ -158,6 +161,8 @@ export default function BrandComplaint() {
             </div>
             <p className="whitespace-pre-wrap text-ink leading-relaxed text-[15px]">{c.body}</p>
           </section>
+
+          {a && <PrecedentReview r={a.review ?? null} brandName={brand.name} onRerun={rerun} busy={busy} />}
 
           {c.offer && (
             <div
@@ -314,7 +319,7 @@ function Analysis({
       {/* Likelihood */}
       <section className="border border-line rounded-lg bg-white/80 p-5">
         <div className="flex justify-between items-start">
-          <p className="case-number text-[11px] text-ink-soft">IF FILED AT A CONSUMER COMMISSION</p>
+          <p className="case-number text-[11px] text-ink-soft">STATISTICAL ESTIMATE · IF FILED</p>
           <button type="button" onClick={onRerun} disabled={busy} className="text-[11px] text-ink-soft underline hover:text-ink">
             Re-run
           </button>
@@ -497,6 +502,109 @@ function Analysis({
         indicative planning estimates from published judgments, not legal advice.
       </p>
     </>
+  )
+}
+
+const REVIEW_HEADLINE: Record<NonNullable<AiReview['outcome']>, { text: string; cls: string }> = {
+  consumer_likely: { text: 'Consumer likely to succeed', cls: 'text-seal' },
+  partly_consumer: { text: 'Likely partly in the consumer’s favour', cls: 'text-[#8a5f14]' },
+  brand_likely: { text: `Brand likely to succeed`, cls: 'text-verdict' },
+  uncertain: { text: 'Could go either way', cls: 'text-ink' },
+}
+
+function PrecedentReview({
+  r,
+  brandName,
+  onRerun,
+  busy,
+}: {
+  r: AiReview | null
+  brandName: string
+  onRerun: () => void
+  busy: boolean
+}) {
+  const shell = (body: React.ReactNode) => (
+    <section className="border border-ink/25 rounded-lg bg-white p-5">
+      <div className="flex justify-between items-baseline gap-2 mb-2">
+        <p className="case-number text-[11px] text-seal">AI PRECEDENT REVIEW</p>
+        {r && r.status !== 'pending' && r.status !== 'disabled' && (
+          <button type="button" onClick={onRerun} disabled={busy} className="text-[11px] text-ink-soft underline hover:text-ink">
+            Re-run
+          </button>
+        )}
+      </div>
+      {body}
+    </section>
+  )
+
+  if (!r || r.status === 'disabled') {
+    return shell(
+      <p className="text-sm text-ink-soft">
+        AI review of comparable judgments is off (no ANTHROPIC_API_KEY on the server). The statistical estimate is shown
+        alongside.
+      </p>,
+    )
+  }
+  if (r.status === 'pending') {
+    return shell(
+      <div className="flex items-center gap-3 text-sm text-ink-soft">
+        <span className="inline-block w-3 h-3 rounded-full border-2 border-seal border-t-transparent animate-spin" />
+        Searching the judgments database for comparable cases and reading them… this takes up to a minute.
+      </div>,
+    )
+  }
+  if (r.status === 'failed') {
+    return shell(<p className="text-sm text-ink-soft">The review didn’t complete ({r.error ?? 'unknown error'}). Try re-running it.</p>)
+  }
+
+  const h = REVIEW_HEADLINE[r.outcome ?? 'uncertain']
+  return shell(
+    <>
+      <p className={`font-display text-2xl font-semibold ${h.cls}`}>{h.text}</p>
+      <p className="text-xs text-ink-soft mt-0.5 capitalize">{r.confidence} confidence</p>
+      <p className="text-[15px] text-ink leading-relaxed mt-3 whitespace-pre-line">{r.suggestion}</p>
+      {r.likelyRelief && (
+        <p className="text-sm mt-3 bg-paper-dim/60 rounded px-3 py-2">
+          <b className="text-ink">Likely relief if filed:</b> <span className="text-ink">{r.likelyRelief}</span>
+        </p>
+      )}
+      {r.keyFactors && r.keyFactors.length > 0 && (
+        <ul className="mt-3 text-sm text-ink list-disc pl-5 space-y-0.5">
+          {r.keyFactors.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      )}
+
+      <p className="case-number text-[11px] text-ink-soft mt-5 mb-2">PRECEDENTS RELIED ON</p>
+      {r.precedents && r.precedents.length > 0 ? (
+        <ol className="space-y-3">
+          {r.precedents.map((p, i) => (
+            <li key={p.caseNumber} className="border-l-2 border-line pl-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-ink font-medium leading-snug">
+                  {i + 1}. {p.title}
+                </p>
+                <OutcomeChip o={p.outcome} />
+              </div>
+              <p className="text-xs text-ink-soft case-number mt-0.5">
+                {p.caseNumber}
+                {p.date && ` · ${p.date}`}
+                {p.title.toLowerCase().includes(brandName.toLowerCase()) && <span className="text-seal"> · involves {brandName}</span>}
+              </p>
+              <p className="text-sm text-ink-soft mt-1">{p.relevance}</p>
+              {p.relief && <p className="text-xs text-ink mt-1">Awarded: {p.relief}</p>}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-sm text-ink-soft">No sufficiently comparable judgments were found in the database.</p>
+      )}
+      <p className="text-[11px] text-ink-soft mt-4">
+        {r.searches ?? 0} search{r.searches === 1 ? '' : 'es'} · {r.casesRead ?? 0} judgment{r.casesRead === 1 ? '' : 's'} read · {r.model}. A suggestion from published judgments,
+        not legal advice.
+      </p>
+    </>,
   )
 }
 
