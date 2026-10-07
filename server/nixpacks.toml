@@ -1,4 +1,0 @@
-# System packages for the OCR backfill (src/ocr.ts): poppler renders order
-# PDFs to images, Tesseract reads them in English, Marathi and Hindi.
-[phases.setup]
-aptPkgs = ["poppler-utils", "tesseract-ocr", "tesseract-ocr-eng", "tesseract-ocr-mar", "tesseract-ocr-hin"]
