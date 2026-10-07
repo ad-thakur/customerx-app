@@ -29,6 +29,8 @@ const pool = new Pool({
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
 })
 
+export type BillingModel = 'subscription' | 'pay_per_analysis'
+
 export type ComplaintSource = 'web' | 'email' | 'hosted' | 'manual' | 'social'
 
 export type ComplaintStatus =
@@ -73,6 +75,18 @@ export interface Brand {
   intakeKey: string
   /** Social listening add-on (X and Reddit mentions), billed separately. */
   socialEnabled: boolean
+  /** 'subscription' (a plan's monthly allowance) or 'pay_per_analysis'. */
+  billingModel: BillingModel
+  /** Plan id from plans.ts; ignored for pay-per-analysis. */
+  plan: string
+  /**
+   * Monthly AI-analysis limit. For a subscription, overrides the plan's
+   * allowance when set; for pay-per-analysis, the brand's own spending cap
+   * (null = no cap).
+   */
+  monthlyLimit: number | null
+  /** Price per AI analysis in rupees, for pay-per-analysis billing. */
+  perAnalysisPrice: number | null
   createdAt: string
 }
 
@@ -113,6 +127,24 @@ export async function initBrandTables(): Promise<void> {
     )
   `)
   await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS social_enabled BOOLEAN NOT NULL DEFAULT false`)
+  await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'subscription'`)
+  await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'trial'`)
+  await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS monthly_limit INT`)
+  await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS per_analysis_price NUMERIC`)
+  // One row per AI analysis run: the unit brands are billed on, plus the
+  // tokens it used, so we know what each brand costs us.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brand_usage (
+      id BIGSERIAL PRIMARY KEY,
+      brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+      complaint_id TEXT,
+      at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      trigger TEXT NOT NULL,
+      input_tokens INT NOT NULL DEFAULT 0,
+      output_tokens INT NOT NULL DEFAULT 0
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS brand_usage_brand_idx ON brand_usage (brand_id, at)`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS brand_members (
       brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
@@ -166,6 +198,10 @@ interface BrandRow {
   gross_margin: number
   intake_key: string
   social_enabled: boolean
+  billing_model: BillingModel
+  plan: string
+  monthly_limit: number | null
+  per_analysis_price: string | null
   created_at: Date
 }
 
@@ -178,6 +214,10 @@ function toBrand(r: BrandRow): Brand {
     grossMargin: Number(r.gross_margin),
     intakeKey: r.intake_key,
     socialEnabled: r.social_enabled,
+    billingModel: r.billing_model,
+    plan: r.plan,
+    monthlyLimit: r.monthly_limit,
+    perAnalysisPrice: r.per_analysis_price === null ? null : Number(r.per_analysis_price),
     createdAt: r.created_at.toISOString(),
   }
 }
@@ -576,4 +616,105 @@ export async function readJudgment(caseNumber: string): Promise<{
     [caseNumber],
   )
   return res.rows[0] ?? null
+}
+
+/* -------------------------------------------------------------------------- */
+/* Billing and usage                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Plan and limit changes. `undefined` leaves a field as it is; `null` clears it. */
+export async function setBilling(
+  id: string,
+  b: { billingModel?: BillingModel; plan?: string; monthlyLimit?: number | null; perAnalysisPrice?: number | null },
+): Promise<Brand | null> {
+  const sets: string[] = []
+  const vals: unknown[] = [id]
+  const add = (col: string, v: unknown) => {
+    vals.push(v)
+    sets.push(`${col} = $${vals.length}`)
+  }
+  if (b.billingModel !== undefined) add('billing_model', b.billingModel)
+  if (b.plan !== undefined) add('plan', b.plan)
+  if (b.monthlyLimit !== undefined) add('monthly_limit', b.monthlyLimit)
+  if (b.perAnalysisPrice !== undefined) add('per_analysis_price', b.perAnalysisPrice)
+  if (sets.length === 0) return findBrand(id)
+  const res = await pool.query<BrandRow>(`UPDATE brands SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, vals)
+  return res.rows.length ? toBrand(res.rows[0]) : null
+}
+
+function monthStart(d = new Date()): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
+/**
+ * Claims one analysis from this month's allowance, atomically, so concurrent
+ * analyses can't overshoot the limit. Returns the usage row id, or null when
+ * the limit is reached.
+ */
+export async function claimAnalysis(
+  brandId: string,
+  limit: number | null,
+  complaintId: string,
+  trigger: string,
+): Promise<number | null> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Serialise claims per brand for the duration of the transaction.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [brandId])
+    if (limit !== null) {
+      const used = await client.query<{ n: string }>(
+        `SELECT count(*) AS n FROM brand_usage WHERE brand_id = $1 AND at >= $2`,
+        [brandId, monthStart()],
+      )
+      if (Number(used.rows[0].n) >= limit) {
+        await client.query('ROLLBACK')
+        return null
+      }
+    }
+    const ins = await client.query<{ id: string }>(
+      `INSERT INTO brand_usage (brand_id, complaint_id, trigger) VALUES ($1, $2, $3) RETURNING id`,
+      [brandId, complaintId, trigger],
+    )
+    await client.query('COMMIT')
+    return Number(ins.rows[0].id)
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+export async function addUsageTokens(id: number, input: number, output: number): Promise<void> {
+  await pool.query(
+    `UPDATE brand_usage SET input_tokens = input_tokens + $2, output_tokens = output_tokens + $3 WHERE id = $1`,
+    [id, input, output],
+  )
+}
+
+export async function usageThisMonth(brandId: string): Promise<{
+  analyses: number
+  inputTokens: number
+  outputTokens: number
+  byDay: { day: string; analyses: number }[]
+}> {
+  const start = monthStart()
+  const totals = await pool.query<{ n: string; i: string | null; o: string | null }>(
+    `SELECT count(*) AS n, sum(input_tokens) AS i, sum(output_tokens) AS o
+       FROM brand_usage WHERE brand_id = $1 AND at >= $2`,
+    [brandId, start],
+  )
+  const days = await pool.query<{ day: string; n: string }>(
+    `SELECT to_char(at, 'YYYY-MM-DD') AS day, count(*) AS n
+       FROM brand_usage WHERE brand_id = $1 AND at >= $2
+      GROUP BY 1 ORDER BY 1`,
+    [brandId, start],
+  )
+  return {
+    analyses: Number(totals.rows[0].n),
+    inputTokens: Number(totals.rows[0].i ?? 0),
+    outputTokens: Number(totals.rows[0].o ?? 0),
+    byDay: days.rows.map((r) => ({ day: r.day, analyses: Number(r.n) })),
+  }
 }

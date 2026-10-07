@@ -12,12 +12,17 @@
 import crypto from 'node:crypto'
 import express from 'express'
 import { userForSession, normaliseEmail } from './auth.js'
-import { analyseComplaint, type ComplaintAnalysis } from './brandAnalysis.js'
-import { extractFacts, templateResponse, writeNarrative, type ResponseMode } from './brandAi.js'
+import { analyseComplaint, extractFactsByRules, type ComplaintAnalysis } from './brandAnalysis.js'
+import { analysisLimit, isAdmin, PLANS, planFor, tokenCostUsd } from './plans.js'
+import { extractFacts, newMeter, templateResponse, writeNarrative, type ResponseMode } from './brandAi.js'
 import { demoComplaints } from './brandDemo.js'
 import { reviewPrecedents } from './brandReview.js'
 import {
   addMember,
+  addUsageTokens,
+  claimAnalysis,
+  setBilling,
+  usageThisMonth,
   brandByKey,
   brandBySlug,
   brandsForEmail,
@@ -118,21 +123,42 @@ async function memberComplaint(
 }
 
 /** Facts → numbers → prose. Saved on the complaint; returns the updated row. */
-export async function runAnalysis(complaint: Complaint, brand: Brand): Promise<Complaint> {
-  const facts = await extractFacts(complaint)
-  const core = await analyseComplaint(complaint, brand, facts)
-  const narrative = await writeNarrative(complaint, brand, core)
+export type AnalysisTrigger = 'added' | 'intake' | 'rerun' | 'consumer_update' | 'demo' | 'social'
+
+/**
+ * Facts → numbers → prose, saved on the complaint. The AI steps draw one
+ * analysis from the brand's monthly allowance (see plans.ts); when it is used
+ * up, the complaint still gets the statistical analysis, without the AI.
+ */
+export async function runAnalysis(
+  complaint: Complaint,
+  brand: Brand,
+  trigger: AnalysisTrigger,
+): Promise<Complaint> {
   const aiOn = Boolean(process.env.ANTHROPIC_API_KEY)
+  const usageId = aiOn ? await claimAnalysis(brand.id, analysisLimit(brand), complaint.id, trigger) : null
+  const useAi = usageId !== null
+  const meter = newMeter()
+
+  const facts = useAi ? await extractFacts(complaint, meter) : extractFactsByRules(complaint)
+  const core = await analyseComplaint(complaint, brand, facts)
+  const narrative = useAi ? await writeNarrative(complaint, brand, core, meter) : null
   const analysis: ComplaintAnalysis = {
     ...core,
     narrative,
-    review: { status: aiOn ? 'pending' : 'disabled', generatedAt: new Date().toISOString() },
+    review: {
+      status: !aiOn ? 'disabled' : useAi ? 'pending' : 'limit',
+      generatedAt: new Date().toISOString(),
+    },
   }
   const saved = (await patchComplaint(complaint.id, { analysis })) ?? complaint
-  // The precedent review takes tens of seconds (it searches and reads
-  // judgments), so it runs after the rest of the analysis is saved and
-  // attaches itself when done.
-  if (aiOn) void attachReview(saved, brand, analysis)
+  if (usageId !== null) {
+    await addUsageTokens(usageId, meter.input, meter.output)
+    // The precedent review takes tens of seconds (it searches and reads
+    // judgments), so it runs after the rest of the analysis is saved and
+    // attaches itself when done.
+    void attachReview(saved, brand, analysis, usageId)
+  }
   return saved
 }
 
@@ -152,8 +178,10 @@ async function withReviewSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function attachReview(complaint: Complaint, brand: Brand, analysis: ComplaintAnalysis) {
-  const review = await withReviewSlot(() => reviewPrecedents(complaint, brand, analysis.facts))
+async function attachReview(complaint: Complaint, brand: Brand, analysis: ComplaintAnalysis, usageId: number) {
+  const meter = newMeter()
+  const review = await withReviewSlot(() => reviewPrecedents(complaint, brand, analysis.facts, meter))
+  await addUsageTokens(usageId, meter.input, meter.output).catch(() => {})
   // Don't overwrite a newer analysis (e.g. re-run after the consumer added details).
   const current = await findComplaint(complaint.id)
   if (current?.complaint.analysis?.generatedAt !== analysis.generatedAt) return
@@ -161,8 +189,8 @@ async function attachReview(complaint: Complaint, brand: Brand, analysis: Compla
 }
 
 /** Fire-and-forget for intake routes, which should answer the sender at once. */
-function analyseInBackground(complaint: Complaint, brand: Brand) {
-  runAnalysis(complaint, brand).catch((err) =>
+function analyseInBackground(complaint: Complaint, brand: Brand, trigger: AnalysisTrigger) {
+  runAnalysis(complaint, brand, trigger).catch((err) =>
     console.error(`[brand] analysis failed for ${complaint.id}:`, (err as Error).message),
   )
 }
@@ -316,8 +344,10 @@ brandRouter.get('/api/brand/:brandId/complaints', async (req, res) => {
         ) / responded.length
       : null
     const closed = all.filter((c) => c.status === 'resolved' || c.status === 'escalated')
+    const u = await usageThisMonth(m.brand.id)
     res.json({
       brand: m.brand,
+      usage: { used: u.analyses, limit: analysisLimit(m.brand) },
       stats: {
         total: all.length,
         open: open.length,
@@ -354,7 +384,7 @@ brandRouter.post('/api/brand/:brandId/complaints', async (req, res) => {
     }
     const { complaint } = await insertComplaint(m.brand.id, input)
     // Manual adds wait for the analysis, so the person sees it immediately.
-    const analysed = await runAnalysis(complaint, m.brand)
+    const analysed = await runAnalysis(complaint, m.brand, 'added')
     res.status(201).json(analysed)
   } catch (err) {
     console.error(err)
@@ -372,7 +402,7 @@ brandRouter.post('/api/brand/:brandId/complaints/:id/analyse', async (req, res) 
   try {
     const m = await memberComplaint(req, res)
     if (!m) return
-    const updated = await runAnalysis(m.complaint, m.brand)
+    const updated = await runAnalysis(m.complaint, m.brand, 'rerun')
     res.json({ ...updated, trackUrl: trackUrl(updated.id, m.token) })
   } catch (err) {
     console.error(err)
@@ -485,7 +515,7 @@ brandRouter.post('/api/brand/:brandId/demo-seed', async (req, res) => {
     }
     // Analyse in parallel but bounded, so the AI layer isn't hammered.
     for (let i = 0; i < created.length; i += 3) {
-      await Promise.all(created.slice(i, i + 3).map((c) => runAnalysis(c, m.brand).catch(() => c)))
+      await Promise.all(created.slice(i, i + 3).map((c) => runAnalysis(c, m.brand, 'demo').catch(() => c)))
     }
     res.json({ added: created.length })
   } catch (err) {
@@ -500,7 +530,7 @@ brandRouter.post('/api/brand/:brandId/demo-seed', async (req, res) => {
 
 async function receive(brand: Brand, input: NewComplaint) {
   const { complaint, consumerToken } = await insertComplaint(brand.id, input)
-  analyseInBackground(complaint, brand)
+  analyseInBackground(complaint, brand, 'intake')
   return { id: complaint.id, trackUrl: trackUrl(complaint.id, consumerToken) }
 }
 
@@ -730,7 +760,7 @@ brandRouter.post('/api/track/:id/details', async (req, res) => {
       thread: [...complaint.thread, entry],
       status: complaint.status === 'escalated' ? 'escalated' : 'consumer_replied',
     })
-    analyseInBackground(updated!, brand)
+    analyseInBackground(updated!, brand, 'consumer_update')
     res.json(consumerView(updated!, brand))
   } catch (err) {
     console.error(err)
@@ -773,5 +803,90 @@ brandRouter.post('/api/track/:id/offer', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Could not record your decision' })
+  }
+})
+
+/* -------------------------------------------------------------------------- */
+/* Plan and usage                                                             */
+/* -------------------------------------------------------------------------- */
+
+async function usageView(brand: Brand, email: string) {
+  const u = await usageThisMonth(brand.id)
+  const limit = analysisLimit(brand)
+  const now = new Date()
+  const admin = isAdmin(email)
+  return {
+    billingModel: brand.billingModel,
+    plan: planFor(brand),
+    plans: PLANS,
+    limit,
+    used: u.analyses,
+    remaining: limit === null ? null : Math.max(0, limit - u.analyses),
+    resetsOn: new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10),
+    byDay: u.byDay,
+    perAnalysisPrice: brand.perAnalysisPrice,
+    estimatedCharge:
+      brand.billingModel === 'pay_per_analysis' && brand.perAnalysisPrice !== null
+        ? u.analyses * brand.perAnalysisPrice
+        : null,
+    aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
+    isAdmin: admin,
+    // What this brand costs us to serve — Consumer X staff only.
+    internal: admin
+      ? { inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: tokenCostUsd(u.inputTokens, u.outputTokens) }
+      : null,
+  }
+}
+
+brandRouter.get('/api/brand/:brandId/usage', async (req, res) => {
+  try {
+    const m = await requireMember(req, res)
+    if (!m) return
+    res.json(await usageView(m.brand, m.email))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not load usage' })
+  }
+})
+
+/** Pay-per-analysis brands set their own monthly cap (null = no cap). */
+brandRouter.put('/api/brand/:brandId/usage/cap', async (req, res) => {
+  const m = await requireMember(req, res)
+  if (!m) return
+  if (m.brand.billingModel !== 'pay_per_analysis') {
+    res.status(409).json({ error: 'Your allowance is set by your plan — contact us to change it' })
+    return
+  }
+  const raw = (req.body as { monthlyLimit?: unknown }).monthlyLimit
+  const n = raw === null || raw === '' ? null : Math.floor(Number(raw))
+  if (n !== null && (!Number.isFinite(n) || n < 0 || n > 1_000_000)) {
+    res.status(400).json({ error: 'Enter a number of analyses, or leave it empty for no cap' })
+    return
+  }
+  const brand = await setBilling(m.brand.id, { monthlyLimit: n })
+  res.json(await usageView(brand!, m.email))
+})
+
+/** Plan changes are made by Consumer X staff (ADMIN_EMAILS), not by brands. */
+brandRouter.patch('/api/brand/:brandId/billing', async (req, res) => {
+  try {
+    const m = await requireMember(req, res)
+    if (!m) return
+    if (!isAdmin(m.email)) {
+      res.status(403).json({ error: 'Only Consumer X staff can change plans' })
+      return
+    }
+    const b = req.body as Record<string, unknown>
+    const num = (v: unknown) => (v === null || v === '' ? null : Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : undefined)
+    const brand = await setBilling(m.brand.id, {
+      billingModel: b.billingModel === 'subscription' || b.billingModel === 'pay_per_analysis' ? b.billingModel : undefined,
+      plan: PLANS.some((p) => p.id === b.plan) ? String(b.plan) : undefined,
+      monthlyLimit: 'monthlyLimit' in b ? (num(b.monthlyLimit) === null ? null : Math.floor(num(b.monthlyLimit) ?? 0)) : undefined,
+      perAnalysisPrice: 'perAnalysisPrice' in b ? num(b.perAnalysisPrice) : undefined,
+    })
+    res.json(await usageView(brand!, m.email))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not update the plan' })
   }
 })

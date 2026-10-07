@@ -525,7 +525,9 @@ export async function analyseComplaint(
   const actions: ActionOption[] = []
   const isGoods = facts.grounds.some((g) => ['defective_goods', 'spurious_goods', 'hazardous_goods'].includes(g))
 
-  if (frivolityScore >= 30) {
+  // Also when the amount is unknown (typically a social post): you can't cost
+  // a fix until you know what was bought.
+  if (frivolityScore >= 30 || principal === 0) {
     actions.push({
       id: 'request_info',
       kind: 'request_info',
@@ -633,7 +635,9 @@ export async function analyseComplaint(
   }
   // Not every complaint deserves compensation. Where the merit is low, a
   // clear, courteous answer is the right response, and costs nothing.
-  if (frivolityScore >= 30 || pWin < 0.4) {
+  // Declining is for complaints that are frivolous or weak on the merits —
+  // never for a credible one that just lacks paperwork.
+  if (frivolityScore >= 55 || pWin < 0.4) {
     actions.push({
       id: 'decline',
       kind: 'decline',
@@ -664,7 +668,7 @@ export async function analyseComplaint(
   actions.push({
     id: 'goodwill',
     kind: 'promo',
-    title: `${frivolityScore >= 30 || pWin < 0.4 ? 'Optional: ' : ''}Apology + ₹${goodwill.toLocaleString('en-IN')} goodwill voucher`,
+    title: `${frivolityScore >= 55 || pWin < 0.4 ? 'Optional: ' : ''}Apology + ₹${goodwill.toLocaleString('en-IN')} goodwill voucher`,
     detail: 'For service lapses and low-merit complaints where the consumer mainly wants acknowledgement. A gesture, not an admission.',
     faceValue: goodwill,
     cost: costOfGoods(goodwill),
@@ -703,6 +707,8 @@ export async function analyseComplaint(
   const best =
     (frivolityScore >= 55 && actions.find((o) => o.kind === 'decline')) ||
     (pWin < 0.35 && actions.find((o) => o.kind === 'advise')) ||
+    // A credible complaint with no amount: get the order details first.
+    (principal === 0 && actions.find((o) => o.kind === 'request_info')) ||
     [...actions].sort((m, n) => expectedTotal(m) - expectedTotal(n))[0]
   best.recommended = true
   actions.sort((m, n) => Number(n.recommended) - Number(m.recommended) || expectedTotal(m) - expectedTotal(n))

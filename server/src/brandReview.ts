@@ -22,6 +22,7 @@ import { categoriesForGrounds } from './categories.js'
 import { GROUND_LABELS } from './caseLogic.js'
 import { classifyOutcome, type ExtractedFacts, type Outcome } from './brandAnalysis.js'
 import { readJudgment, searchCorpus, type Brand, type Complaint } from './brandStore.js'
+import type { Meter } from './brandAi.js'
 import type { GroundId } from './types.js'
 
 const MODEL = process.env.BRAND_AI_MODEL ?? 'claude-opus-5-5'
@@ -39,7 +40,8 @@ export interface ReviewPrecedent {
 }
 
 export interface AiReview {
-  status: 'pending' | 'done' | 'failed' | 'disabled'
+  /** 'limit' = the brand's monthly AI-analysis allowance was used up. */
+  status: 'pending' | 'done' | 'failed' | 'disabled' | 'limit'
   outcome?: ReviewOutcome
   confidence?: 'low' | 'medium' | 'high'
   suggestion?: string
@@ -145,7 +147,12 @@ interface SubmitInput {
   precedents: { case_number: string; relevance: string; relief?: string | null }[]
 }
 
-export async function reviewPrecedents(c: Complaint, brand: Brand, facts: ExtractedFacts): Promise<AiReview> {
+export async function reviewPrecedents(
+  c: Complaint,
+  brand: Brand,
+  facts: ExtractedFacts,
+  meter?: Meter,
+): Promise<AiReview> {
   const now = () => new Date().toISOString()
   if (!process.env.ANTHROPIC_API_KEY) return { status: 'disabled', generatedAt: now() }
 
@@ -242,6 +249,10 @@ export async function reviewPrecedents(c: Complaint, brand: Brand, facts: Extrac
         fallbacks: 'default',
       } as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming)) as unknown as Anthropic.Message
 
+      if (meter) {
+        meter.input += msg.usage?.input_tokens ?? 0
+        meter.output += msg.usage?.output_tokens ?? 0
+      }
       if ((msg.stop_reason as string) === 'refusal') throw new Error('The model declined this request')
 
       // Pass the assistant turn back unchanged (thinking blocks included).

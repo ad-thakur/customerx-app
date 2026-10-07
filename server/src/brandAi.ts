@@ -34,7 +34,17 @@ function client(): Anthropic | null {
   return process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
 }
 
-async function askJson<T>(system: string, prompt: string, maxTokens = 8000): Promise<T | null> {
+/** Running token count for one analysis, so usage can be billed and costed. */
+export interface Meter {
+  input: number
+  output: number
+}
+
+export function newMeter(): Meter {
+  return { input: 0, output: 0 }
+}
+
+async function askJson<T>(system: string, prompt: string, maxTokens: number, meter?: Meter): Promise<T | null> {
   const c = client()
   if (!c) return null
   const msg = await c.messages.create({
@@ -43,6 +53,10 @@ async function askJson<T>(system: string, prompt: string, maxTokens = 8000): Pro
     system,
     messages: [{ role: 'user', content: prompt }],
   })
+  if (meter) {
+    meter.input += msg.usage?.input_tokens ?? 0
+    meter.output += msg.usage?.output_tokens ?? 0
+  }
   const text = msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b) => b.text)
@@ -61,7 +75,7 @@ const EXTRACT_SYSTEM = `You extract structured facts from consumer complaints se
  * Facts from the complaint, by Claude when available, merged over the rules
  * result so a field the model leaves blank still gets the keyword answer.
  */
-export async function extractFacts(c: Complaint): Promise<ExtractedFacts> {
+export async function extractFacts(c: Complaint, meter?: Meter): Promise<ExtractedFacts> {
   const rules = extractFactsByRules(c)
   try {
     const out = await askJson<Partial<ExtractedFacts>>(
@@ -95,6 +109,7 @@ Return JSON with exactly these keys:
   "summary": one neutral sentence (max 30 words) summarising the complaint
 }`,
       2000,
+      meter,
     )
     if (!out) return rules
     const grounds = (Array.isArray(out.grounds) ? out.grounds : []).filter((g): g is GroundId =>
@@ -139,6 +154,7 @@ export async function writeNarrative(
   c: Complaint,
   brand: Brand,
   a: Omit<ComplaintAnalysis, 'narrative'>,
+  meter?: Meter,
 ): Promise<string | null> {
   try {
     const out = await askJson<{ narrative: string }>(
@@ -157,6 +173,7 @@ Analysis (fixed numbers): ${JSON.stringify({
 
 Write "narrative": two short paragraphs, max 110 words total. First: what is driving the likelihood figure for this complaint. Second: why the recommended action is the sensible next step, in cost terms. Return {"narrative": string}.`,
       1500,
+      meter,
     )
     return out && typeof out.narrative === 'string' ? out.narrative.slice(0, 1200) : null
   } catch (err) {

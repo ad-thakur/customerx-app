@@ -27,6 +27,8 @@ async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
 
+export type BillingModel = 'subscription' | 'pay_per_analysis'
+
 export type ComplaintSource = 'web' | 'email' | 'hosted' | 'manual' | 'social'
 export type ComplaintStatus = 'new' | 'responded' | 'consumer_replied' | 'resolved' | 'escalated' | 'closed'
 export type OfferKind = 'refund' | 'replacement' | 'repair' | 'service' | 'gift_card' | 'promo' | 'partial_refund'
@@ -40,6 +42,10 @@ export interface Brand {
   grossMargin: number
   intakeKey: string
   socialEnabled: boolean
+  billingModel: BillingModel
+  plan: string
+  monthlyLimit: number | null
+  perAnalysisPrice: number | null
   createdAt: string
 }
 
@@ -85,7 +91,7 @@ export interface ActionOption {
 export type ReviewOutcome = 'consumer_likely' | 'partly_consumer' | 'brand_likely' | 'uncertain'
 
 export interface AiReview {
-  status: 'pending' | 'done' | 'failed' | 'disabled'
+  status: 'pending' | 'done' | 'failed' | 'disabled' | 'limit'
   outcome?: ReviewOutcome
   confidence?: 'low' | 'medium' | 'high'
   suggestion?: string
@@ -247,7 +253,9 @@ export const addMember = (id: string, email: string) =>
   })
 
 export const loadQueue = (brandId: string) =>
-  api<{ brand: Brand; stats: QueueStats; complaints: ComplaintRow[] }>(`/api/brand/${brandId}/complaints`)
+  api<{ brand: Brand; usage: { used: number; limit: number | null }; stats: QueueStats; complaints: ComplaintRow[] }>(
+    `/api/brand/${brandId}/complaints`,
+  )
 
 export const addComplaint = (brandId: string, input: Record<string, unknown>) =>
   api<Complaint>(`/api/brand/${brandId}/complaints`, { method: 'POST', body: JSON.stringify(input) })
@@ -283,6 +291,42 @@ export const setStatus = (brandId: string, id: string, status: 'resolved' | 'clo
 
 export const seedDemo = (brandId: string) =>
   api<{ added: number }>(`/api/brand/${brandId}/demo-seed`, { method: 'POST' })
+
+/* -------------------------------------------------------------------------- */
+/* Plan and usage                                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface Plan {
+  id: string
+  label: string
+  monthlyAnalyses: number | null
+}
+
+export interface Usage {
+  billingModel: BillingModel
+  plan: Plan
+  plans: Plan[]
+  limit: number | null
+  used: number
+  remaining: number | null
+  resetsOn: string
+  byDay: { day: string; analyses: number }[]
+  perAnalysisPrice: number | null
+  estimatedCharge: number | null
+  aiEnabled: boolean
+  isAdmin: boolean
+  internal: { inputTokens: number; outputTokens: number; costUsd: number } | null
+}
+
+export const loadUsage = (brandId: string) => api<Usage>(`/api/brand/${brandId}/usage`)
+
+export const setUsageCap = (brandId: string, monthlyLimit: number | null) =>
+  api<Usage>(`/api/brand/${brandId}/usage/cap`, { method: 'PUT', body: JSON.stringify({ monthlyLimit }) })
+
+export const setBilling = (
+  brandId: string,
+  b: { billingModel?: BillingModel; plan?: string; monthlyLimit?: number | null; perAnalysisPrice?: number | null },
+) => api<Usage>(`/api/brand/${brandId}/billing`, { method: 'PATCH', body: JSON.stringify(b) })
 
 /* -------------------------------------------------------------------------- */
 /* Social listening add-on                                                    */

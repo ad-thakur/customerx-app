@@ -80,7 +80,11 @@ export function StatusChip({ status }: { status: ComplaintStatus }) {
 export default function BrandQueue() {
   const { brand } = useBrand()
   const navigate = useNavigate()
-  const [data, setData] = useState<{ stats: QueueStats; complaints: ComplaintRow[] } | null>(null)
+  const [data, setData] = useState<{
+    stats: QueueStats
+    usage: { used: number; limit: number | null }
+    complaints: ComplaintRow[]
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('open')
   const [q, setQ] = useState('')
@@ -154,6 +158,18 @@ export default function BrandQueue() {
           <h1 className="font-display text-3xl text-ink">{brand.name}</h1>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            to="/brand/usage"
+            title="AI analyses used this month"
+            className={`text-xs border rounded-full px-3 py-1 ${
+              data.usage.limit !== null && data.usage.used >= data.usage.limit
+                ? 'border-seal/50 text-seal bg-seal/5'
+                : 'border-line text-ink-soft hover:border-ink/40'
+            }`}
+          >
+            AI analyses {data.usage.used}
+            {data.usage.limit !== null ? ` / ${data.usage.limit}` : ''}
+          </Link>
           {updatedAt && (
             <span className="text-xs text-ink-soft hidden sm:inline">
               Live · updated {updatedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}

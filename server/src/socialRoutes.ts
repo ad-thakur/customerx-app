@@ -165,7 +165,7 @@ socialRouter.post('/api/brand/:brandId/social/:mid/convert', async (req, res) =>
       purchaseDate: null,
       receivedAt: m.mention.postedAt,
     })
-    await runAnalysis(complaint, m.brand)
+    await runAnalysis(complaint, m.brand, 'social')
     const updated = await patchMention(m.mention.id, { status: 'converted', complaintId: complaint.id })
     res.json({ mention: updated, complaintId: complaint.id })
   } catch (err) {

@@ -127,6 +127,14 @@ export default function BrandShell() {
                   >
                     Channels
                   </NavLink>
+                  <NavLink
+                    to="/brand/usage"
+                    className={({ isActive }) =>
+                      `px-2 py-1 rounded ${isActive ? 'text-marigold' : 'text-paper/80 hover:text-paper'}`
+                    }
+                  >
+                    Usage
+                  </NavLink>
                 </>
               )}
               <button

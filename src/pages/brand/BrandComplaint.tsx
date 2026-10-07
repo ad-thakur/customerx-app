@@ -545,6 +545,17 @@ function PrecedentReview({
       </p>,
     )
   }
+  if (r.status === 'limit') {
+    return shell(
+      <p className="text-sm text-ink-soft">
+        Your monthly allowance of AI analyses is used up, so this complaint has the statistical estimate only.{' '}
+        <Link to="/brand/usage" className="text-seal underline">
+          See plan & usage
+        </Link>
+        .
+      </p>,
+    )
+  }
   if (r.status === 'pending') {
     return shell(
       <div className="flex items-center gap-3 text-sm text-ink-soft">
