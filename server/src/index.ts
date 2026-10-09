@@ -529,7 +529,8 @@ async function localPrecedentResults(query: string, categories: string[] | null 
     return {
       title: `${r.caseNumber} — ${r.complainant ?? 'Complainant'} v. ${r.respondent ?? 'Respondent'}`,
       docUrl: `https://e-jagriti.gov.in/judgement#${encodeURIComponent(r.caseNumber)}`,
-      court: ['NCDRC', r.outcome, date].filter(Boolean).join(' · '),
+      // The corpus now spans NCDRC, State and District Commissions.
+      court: [r.commission, r.outcome, date].filter(Boolean).join(' · '),
       snippet: r.snippet.replace(/<\/?b>/g, ''),
     }
   })

@@ -199,7 +199,7 @@ const MIN_RANK = Number(process.env.PRECEDENT_MIN_RANK ?? 0.05)
 
 export type PrecedentHit = Pick<
   PrecedentCase,
-  'caseNumber' | 'complainant' | 'respondent' | 'outcome'
+  'caseNumber' | 'commission' | 'complainant' | 'respondent' | 'outcome'
 > & {
   judgmentDate: Date | string | null // pg returns DATE columns as Date objects
   snippet: string
@@ -259,6 +259,7 @@ export async function searchLocalPrecedents(
       SELECT replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery AS tsq
     )
     SELECT case_number AS "caseNumber",
+           commission,
            complainant,
            respondent,
            outcome,
