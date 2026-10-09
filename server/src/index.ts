@@ -27,17 +27,31 @@ import {
   sendLoginEmail,
   userForSession,
 } from './auth.js'
+import { aiEnabled, aiStatus } from './aiSwitch.js'
+import { brandRouter } from './brandRoutes.js'
+import { initBrandTables } from './brandStore.js'
+import { socialRouter } from './socialRoutes.js'
+import { initSocialTables } from './social.js'
 import type { CaseRecord, DispatchMethod, IntakeData, RoutingResult } from './types.js'
 
 const app = express()
 app.use(express.json({ limit: '1mb' }))
 
+// Complaint intake is posted from brands' own websites, so it accepts any
+// origin. Registered before the app-wide CORS rule so it also answers the
+// preflight; it only exposes the intake routes.
+app.use('/api/intake', cors({ origin: true }))
+
 // CORS: set FRONTEND_ORIGIN to your Vercel URL (comma-separated for several).
 const origins = (process.env.FRONTEND_ORIGIN ?? '*').split(',').map((s) => s.trim())
 app.use(cors({ origin: origins.includes('*') ? true : origins }))
 
+// Brand dashboard, complaint intake and consumer tracking links.
+app.use(brandRouter)
+app.use(socialRouter)
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, ai: Boolean(process.env.ANTHROPIC_API_KEY) })
+  res.json({ ok: true, ai: aiEnabled(), aiStatus: aiStatus() })
 })
 
 // ---------------------------------------------------------------------------
@@ -110,7 +124,11 @@ app.post('/api/auth/request-link', async (req, res) => {
     }
     const token = await issueLoginToken(email)
     const base = (process.env.FRONTEND_ORIGIN ?? '').split(',')[0].trim() || 'http://localhost:5173'
-    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`
+    // Optional same-site path to land on after sign-in (e.g. /brand). Only a
+    // plain path is accepted, never another origin.
+    const next = String((req.body as { next?: string }).next ?? '')
+    const nextParam = /^\/[A-Za-z0-9/_-]*$/.test(next) ? `&next=${encodeURIComponent(next)}` : ''
+    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}${nextParam}`
     const sent = await sendLoginEmail(email, link)
     // Report delivery failure honestly rather than showing "check your email"
     // for a message that was never sent. This says nothing about whether the
@@ -349,7 +367,7 @@ app.put('/api/cases/:id/intake', async (req, res) => {
 
 // AI drafting help for the notice — both are advisory only. The endpoints
 // return suggestions the frontend shows for the user to accept or discard;
-// nothing here writes to the notice. If no ANTHROPIC_API_KEY is set they answer
+// nothing here writes to the notice. While AI is switched off they answer
 // { aiDisabled: true } and the frontend hides the buttons. Refused once the
 // notice is dispatched (the document is then fixed).
 app.post('/api/cases/:id/notice/ai-fill', async (req, res) => {
@@ -360,7 +378,7 @@ app.post('/api/cases/:id/notice/ai-fill', async (req, res) => {
       res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
       return
     }
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!aiEnabled()) {
       res.json({ aiDisabled: true, suggestions: [] })
       return
     }
@@ -392,7 +410,7 @@ app.post('/api/cases/:id/notice/ai-reword', async (req, res) => {
       res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
       return
     }
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!aiEnabled()) {
       res.json({ aiDisabled: true, variants: [] })
       return
     }
@@ -565,10 +583,12 @@ const port = Number(process.env.PORT ?? 3001)
 initDb()
   .then(() => initPrecedentTable())
   .then(() => initAuthTables())
+  .then(() => initBrandTables())
+  .then(() => initSocialTables())
   .then(() => {
     app.listen(port, () => {
       console.log(`Consumer X API listening on :${port}`)
-      console.log(`AI assessment layer: ${process.env.ANTHROPIC_API_KEY ? 'enabled' : 'disabled (no ANTHROPIC_API_KEY)'}`)
+      console.log(`AI layer: ${aiStatus()} (set AI_ENABLED=true with an ANTHROPIC_API_KEY to turn it on)`)
     })
   })
   .catch((err) => {

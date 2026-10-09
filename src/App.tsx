@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import Home from './pages/Home'
@@ -18,8 +18,35 @@ import IndividualPursuit from './pages/IndividualPursuit'
 import SignIn from './pages/SignIn'
 import AuthCallback from './pages/AuthCallback'
 import { AuthProvider } from './lib/AuthContext'
+import BrandShell from './pages/brand/BrandShell'
+import BrandQueue from './pages/brand/BrandQueue'
+import BrandComplaint from './pages/brand/BrandComplaint'
+import BrandSettings from './pages/brand/BrandSettings'
+import BrandSocial from './pages/brand/BrandSocial'
+import BrandUsage from './pages/brand/BrandUsage'
+import TrackComplaint from './pages/TrackComplaint'
+import ComplainTo from './pages/ComplainTo'
 
 export default function App() {
+  const { pathname } = useLocation()
+
+  // The brand dashboard is a separate workspace with its own chrome.
+  if (pathname === '/brand' || pathname.startsWith('/brand/')) {
+    return (
+      <AuthProvider>
+        <Routes>
+          <Route path="/brand" element={<BrandShell />}>
+            <Route index element={<BrandQueue />} />
+            <Route path="c/:id" element={<BrandComplaint />} />
+            <Route path="social" element={<BrandSocial />} />
+            <Route path="settings" element={<BrandSettings />} />
+            <Route path="usage" element={<BrandUsage />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    )
+  }
+
   return (
     <AuthProvider>
       <div className="min-h-screen flex flex-col">
@@ -42,6 +69,8 @@ export default function App() {
             <Route path="/case/:id/offer" element={<Resolution />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/track/:id" element={<TrackComplaint />} />
+            <Route path="/complain/:slug" element={<ComplainTo />} />
           </Routes>
         </main>
         <Footer />
