@@ -12,6 +12,7 @@ import {
   type CaseView,
 } from '../lib/caseStore'
 import { groundsByIds, readGrounds, groundListLabel } from '../lib/grounds'
+import { BRAND_NAME } from '../lib/brand'
 
 interface TimelineItem {
   when: string
@@ -24,7 +25,7 @@ function buildTimeline(c: CaseView): { items: TimelineItem[]; current: TimelineI
   const items: TimelineItem[] = [
     {
       when: fmtDate(c.createdAt, { day: 'numeric', month: 'short' }),
-      what: 'Complaint filed on Consumer X',
+      what: `Complaint filed on ${BRAND_NAME}`,
       note: `Eligibility confirmed: ${c.routing.commissionLabel.match(/\(([^)]+)\)/)?.[1] ?? c.routing.commissionLabel}, evidence score ${c.routing.evidenceScore.score}/100.`,
     },
   ]

@@ -1,7 +1,7 @@
 import type { GroundId, IntakeData, RoutingResult } from './types'
 
 // ---------------------------------------------------------------------------
-// API client for the Consumer X backend (Express + Postgres on Railway).
+// API client for the All Square backend (Express + Postgres on Railway).
 //
 // The server is the source of truth for case state; the browser keeps only
 // the per-case access tokens (no accounts in this phase — a case is reachable
@@ -104,8 +104,8 @@ export interface CaseView {
 // Token + signature registries (localStorage)
 // ---------------------------------------------------------------------------
 
-const TOKENS_KEY = 'consumerx.caseTokens.v1'
-const SIGS_KEY = 'consumerx.caseSigs.v1'
+const TOKENS_KEY = 'allsquare.caseTokens.v1'
+const SIGS_KEY = 'allsquare.caseSigs.v1'
 
 function readMap(key: string): Record<string, string> {
   try {

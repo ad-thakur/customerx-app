@@ -1,4 +1,4 @@
-# Consumer X — path to public launch with ₹499 payments
+# All Square — path to public launch with ₹499 payments
 
 Written 9 August 2026, against the deployed build (custom domain live, 419
 precedents, magic-link auth working, notice generation verified end to end).

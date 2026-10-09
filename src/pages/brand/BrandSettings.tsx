@@ -2,18 +2,19 @@ import { useEffect, useState } from 'react'
 import { useBrand } from './BrandShell'
 import { CopyLine } from './BrandComplaint'
 import { addMember, listMembers, updateBrand } from '../../lib/brandApi'
+import { BRAND_DOMAIN, BRAND_NAME } from '../../lib/brand'
 
 const API_ORIGIN =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
   (typeof window !== 'undefined' ? window.location.origin : '')
-const INBOUND_DOMAIN = (import.meta.env.VITE_INBOUND_DOMAIN as string | undefined) || 'inbound.consumerx.co.in'
+const INBOUND_DOMAIN = (import.meta.env.VITE_INBOUND_DOMAIN as string | undefined) || `inbound.${BRAND_DOMAIN}`
 
 export default function BrandSettings() {
   const { brand, reload } = useBrand()
   const hostedUrl = `${window.location.origin}/complain/${brand.slug}`
   const inbound = `complaints+${brand.slug}@${INBOUND_DOMAIN}`
 
-  const embed = `<!-- ${brand.name} complaint form, powered by Consumer X -->
+  const embed = `<!-- ${brand.name} complaint form, powered by ${BRAND_NAME} -->
 <form id="cx-complaint">
   <input name="name" placeholder="Your name" required>
   <input name="email" type="email" placeholder="Email" required>
@@ -59,7 +60,7 @@ document.getElementById('cx-complaint').addEventListener('submit', async (e) => 
         </div>
       </Card>
 
-      <Card title="Hosted complaint page" tag="CONSUMER X FORM">
+      <Card title="Hosted complaint page" tag={`${BRAND_NAME.toUpperCase()} FORM`}>
         <p className="text-sm text-ink-soft mb-3">
           No form of your own? Link to this page from your site, receipts or packaging.
         </p>

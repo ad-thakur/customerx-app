@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { GROUP_CLAIMS, GROUP_JOIN_FEE } from '../lib/groups'
 import Chip, { statusTone } from '../components/Chip'
+import { BRAND_NAME } from '../lib/brand'
 
 const HOW_IT_WORKS = [
   {
@@ -42,7 +43,7 @@ export default function ClaimAggregation() {
         <p className="mt-6 text-lg text-ink-soft max-w-2xl">
           A company can wait out one complaint — the courts are slow, and they know it. What they
           can't wait out is a hundred of the same complaint, coordinated, with a combined number
-          attached. Consumer X groups substantially similar claims by company, product and failure,
+          attached. {BRAND_NAME} groups substantially similar claims by company, product and failure,
           so you file alongside everyone else the same company wronged — and negotiate from
           concentrated strength.
         </p>

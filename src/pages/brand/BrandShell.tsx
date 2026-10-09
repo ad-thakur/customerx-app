@@ -4,6 +4,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Logo from '../../components/Logo'
 import { useAuth } from '../../lib/AuthContext'
 import { createBrand, myBrands, rememberBrand, rememberedBrand, type Brand } from '../../lib/brandApi'
+import { BRAND_NAME } from '../../lib/brand'
 
 /* -------------------------------------------------------------------------- */
 /* Selected-brand context                                                     */
@@ -76,7 +77,7 @@ export default function BrandShell() {
           <div className="flex items-center gap-3 min-w-0">
             <Link to="/brand" className="flex items-center gap-2.5 shrink-0">
               <Logo className="w-7 h-7 text-marigold" />
-              <span className="font-display text-lg font-semibold tracking-tight">Consumer X</span>
+              <span className="font-display text-lg font-semibold tracking-tight whitespace-nowrap">{BRAND_NAME}</span>
               <span className="hidden sm:inline case-number text-[10px] text-marigold border border-marigold/50 rounded px-1.5 py-0.5">
                 FOR BRANDS
               </span>
@@ -163,13 +164,13 @@ export default function BrandShell() {
 
 function BrandLanding() {
   const points = [
-    ['Every complaint, one queue', 'From your website form, your support inbox and Consumer X — analysed the moment it lands.'],
+    ['Every complaint, one queue', `From your website form, your support inbox and ${BRAND_NAME} — analysed the moment it lands.`],
     ['Know how it would be decided', 'Each complaint scored against 50,000+ NCDRC judgments, including your own record before the commissions.'],
     ['Settle for less, sooner', 'Costed options from a priority repair to store credit, measured against what defending it would cost.'],
   ]
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 sm:py-24">
-      <p className="case-number text-seal text-sm mb-3">CONSUMER X FOR BRANDS</p>
+      <p className="case-number text-seal text-sm mb-3">{BRAND_NAME.toUpperCase()} FOR BRANDS</p>
       <h1 className="font-display text-4xl sm:text-5xl text-ink leading-tight max-w-3xl">
         Resolve consumer complaints before they become consumer cases.
       </h1>

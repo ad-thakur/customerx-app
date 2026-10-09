@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
 import { featuredGroup, GROUP_JOIN_FEE } from '../lib/groups'
 import Chip from '../components/Chip'
+import { BRAND_NAME } from '../lib/brand'
 
 const WHAT_JOINING_DOES = [
   {
     title: 'Your claim joins the shared file',
-    body: 'Your evidence and details are added to the coordinated group record — kept private to Consumer X.',
+    body: `Your evidence and details are added to the coordinated group record — kept private to ${BRAND_NAME}.`,
   },
   {
     title: "You're covered by the coordinated notice",

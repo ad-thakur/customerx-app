@@ -28,6 +28,7 @@ import type { IntakeData } from '../lib/types'
 import { downloadNoticeDocx, noticeFilename } from '../lib/noticeDocx'
 import { useAuth } from '../lib/AuthContext'
 import { claimLocalCases } from '../lib/auth'
+import { BRAND_NAME } from '../lib/brand'
 
 /* -------------------------------------------------------------------------- */
 /* Block rendering                                                            */
@@ -437,7 +438,7 @@ export default function Notice() {
             email address, and by Registered Post with A.D.
           </p>
           <div className="border border-line border-l-4 border-l-marigold rounded-lg bg-white/70 p-5 mb-8">
-            <p className="text-sm text-ink font-medium mb-1">Consumer X does not send this for you.</p>
+            <p className="text-sm text-ink font-medium mb-1">{BRAND_NAME} does not send this for you.</p>
             <p className="text-sm text-ink-soft leading-relaxed">
               A notice carries more weight when it comes from you, and service by Registered Post
               with A.D. is what proves delivery if you later file. We give you the document and a
@@ -916,7 +917,7 @@ export default function Notice() {
       )}
 
       <p className="case-number text-xs text-ink-soft/60 text-center mt-10 leading-relaxed">
-        This is a document-generation tool, not legal advice, and Consumer X is not your advocate.
+        This is a document-generation tool, not legal advice, and {BRAND_NAME} is not your advocate.
         Review the notice before you send it — and consider having an advocate settle it where the
         claim is substantial.
       </p>

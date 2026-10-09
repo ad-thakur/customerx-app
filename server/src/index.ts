@@ -34,6 +34,7 @@ import { initBrandTables } from './brandStore.js'
 import { socialRouter } from './socialRoutes.js'
 import { initSocialTables } from './social.js'
 import type { CaseRecord, DispatchMethod, IntakeData, RoutingResult } from './types.js'
+import { BRAND_NAME } from './brand.js'
 
 const app = express()
 app.use(express.json({ limit: '1mb' }))
@@ -452,7 +453,7 @@ app.post('/api/cases/:id/notice/ai-reword', async (req, res) => {
 
 // Record that the complainant has dispatched the notice themselves.
 //
-// This route does NOT send anything. Consumer X generates the document and the
+// This route does NOT send anything. The platform generates the document and the
 // email draft; the complainant sends it from their own address and by
 // registered post, then confirms here — which is what starts the 30-day clock.
 app.post('/api/cases/:id/notice', async (req, res) => {
@@ -664,7 +665,7 @@ initDb()
   .then(() => initSocialTables())
   .then(() => {
     app.listen(port, () => {
-      console.log(`Consumer X API listening on :${port}`)
+      console.log(`${BRAND_NAME} API listening on :${port}`)
       console.log(`AI layer: ${aiStatus()} (set AI_ENABLED=true with an ANTHROPIC_API_KEY to turn it on)`)
     })
   })

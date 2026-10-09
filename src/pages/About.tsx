@@ -5,6 +5,7 @@ import {
   DefectiveGoodsIcon,
   UnfairTradePracticeIcon,
 } from '../components/EvidenceIcons'
+import { BRAND_NAME } from '../lib/brand'
 
 const PATTERNS = [
   {
@@ -67,7 +68,7 @@ export default function About() {
           that break the day the warranty ends. Trade practices designed to mislead. We've watched
           this happen for years — not because Indians lack rights, but because the system meant to
           enforce those rights is overloaded, slow, and built for people who already have a lawyer
-          on retainer. Consumer X exists to close that gap.
+          on retainer. {BRAND_NAME} exists to close that gap.
         </p>
         <div className="flex justify-center mb-9">
           <TricolorRule />
@@ -182,7 +183,7 @@ export default function About() {
             A brand can absorb a single complaint — one refund, quietly, is cheaper than fixing the
             problem. What it cannot absorb is two hundred of the same complaint arriving together,
             with a combined liability attached and a coordinated notice behind it. That is the shift
-            Consumer X is built for. We don't just help you file; we find everyone the same company
+            {BRAND_NAME} is built for. We don't just help you file; we find everyone the same company
             wronged the same way, group your claims, and turn scattered grievances into concentrated
             leverage the company has to answer.
           </p>

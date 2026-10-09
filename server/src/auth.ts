@@ -19,6 +19,7 @@
 
 import crypto from 'node:crypto'
 import pg from 'pg'
+import { BRAND_DOMAIN, BRAND_NAME } from './brand.js'
 
 const { Pool } = pg
 
@@ -225,7 +226,7 @@ export interface SendResult {
  */
 export async function sendLoginEmail(email: string, link: string): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY
-  const from = process.env.AUTH_FROM_EMAIL ?? 'Consumer X <login@consumerx.co.in>'
+  const from = process.env.AUTH_FROM_EMAIL ?? `${BRAND_NAME} <login@${BRAND_DOMAIN}>`
 
   if (!key) {
     console.log(`[auth] no RESEND_API_KEY — sign-in link for ${email}:\n${link}`)
@@ -242,9 +243,9 @@ export async function sendLoginEmail(email: string, link: string): Promise<SendR
     body: JSON.stringify({
       from,
       to: [email],
-      subject: 'Your Consumer X sign-in link',
+      subject: `Your ${BRAND_NAME} sign-in link`,
       text: [
-        'Sign in to Consumer X using the link below.',
+        `Sign in to ${BRAND_NAME} using the link below.`,
         '',
         link,
         '',

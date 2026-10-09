@@ -13,7 +13,7 @@
 import { knownCaseIds, getToken } from './caseStore'
 
 const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-const SESSION_KEY = 'consumerx.session.v1'
+const SESSION_KEY = 'allsquare.session.v1'
 
 export interface User {
   id: string

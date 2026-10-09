@@ -1,4 +1,4 @@
-# Deploying Consumer X — Vercel (frontend) + Railway (backend)
+# Deploying All Square — Vercel (frontend) + Railway (backend)
 
 The repo is a two-package monorepo:
 
@@ -44,7 +44,7 @@ git push origin main    # create a GitHub repo first if you haven't
    - `RESEND_API_KEY` = a [Resend](https://resend.com) key, so magic-link
      sign-in emails actually get delivered. Without it, links are only logged
      to the Railway console and nobody can sign in on their own.
-   - `AUTH_FROM_EMAIL` = the verified sender, e.g. `Consumer X <login@consumerx.co.in>`.
+   - `AUTH_FROM_EMAIL` = the verified sender, e.g. `All Square <login@consumerx.co.in>`.
    - Do **not** set `AUTH_DEV_ECHO` in production — it returns the sign-in link
      in the HTTP response, which would let anyone sign in as any address.
 5. **Settings → Networking → Generate Domain**. Copy the URL, e.g.
