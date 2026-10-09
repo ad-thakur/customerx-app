@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react'
-import Chip from '../components/Chip'
-import { NEWS_SEED, CATEGORY_LABEL, type NewsArticle, type NewsCategory } from '../lib/newsSeed'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import NewsCard from '../components/NewsCard'
+import { useAuth } from '../lib/AuthContext'
+import { fetchPublished, type NewsItem } from '../lib/newsApi'
+import { NEWS_SEED, CATEGORY_LABEL, type NewsCategory } from '../lib/newsSeed'
 
 function TricolorRule() {
   return (
@@ -14,101 +17,53 @@ function TricolorRule() {
   )
 }
 
-const CATEGORY_TONE: Record<NewsCategory, 'gold' | 'seal' | 'verdict'> = {
-  law: 'gold',
-  breach: 'seal',
-  action: 'verdict',
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-/** Host name shown next to the "Read on …" link, e.g. livelaw.in. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return ''
-  }
-}
-
-function ArticleCard({ article }: { article: NewsArticle }) {
-  return (
-    <article className="border border-line rounded-2xl bg-paper-dim/40 p-6 md:p-7 transition-colors hover:border-ink/25">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <span className="case-number text-[11px] tracking-wide text-ink-soft uppercase">
-          {article.source} · {formatDate(article.publishedAt)}
-        </span>
-        <Chip tone={CATEGORY_TONE[article.category]}>{CATEGORY_LABEL[article.category]}</Chip>
-      </div>
-
-      <h2 className="font-display text-xl md:text-2xl leading-snug tracking-tight text-ink mb-3">
-        <a
-          href={article.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-seal transition-colors"
-        >
-          {article.title}
-        </a>
-      </h2>
-
-      <p className="text-ink-soft leading-relaxed mb-5">{article.summary}</p>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {article.companies.map((c) => (
-          <Chip key={c} tone="navy">
-            {c}
-          </Chip>
-        ))}
-        {article.sectors.map((s) => (
-          <Chip key={s} tone="gold" className="opacity-90">
-            {s}
-          </Chip>
-        ))}
-      </div>
-
-      <a
-        href={article.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 mt-5 text-sm font-medium text-seal hover:text-ink transition-colors"
-      >
-        Read on {hostOf(article.url)} <span aria-hidden>↗</span>
-      </a>
-    </article>
-  )
-}
-
 export default function News() {
+  const { user } = useAuth()
+  // Start with the curated seed so the page is never blank; swap in live
+  // published articles once the API returns any.
+  const [articles, setArticles] = useState<NewsItem[]>(NEWS_SEED)
   const [category, setCategory] = useState<NewsCategory | 'all'>('all')
   const [sector, setSector] = useState<string | null>(null)
 
-  // Sectors present *within the selected category*, so the filter row only ever
-  // offers a sector that will actually return articles — no dead-end "no
-  // articles" combinations. Switching category resets the sector (see the tabs).
+  useEffect(() => {
+    let alive = true
+    fetchPublished()
+      .then((list) => {
+        if (alive && list.length) setArticles(list)
+      })
+      .catch(() => {
+        /* API not reachable yet — keep the seed. */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Sectors present within the selected category, so the filter row never
+  // offers a sector that would return nothing. Switching category resets it.
   const allSectors = useMemo(
     () =>
       [
         ...new Set(
-          NEWS_SEED.filter((a) => category === 'all' || a.category === category).flatMap(
-            (a) => a.sectors,
-          ),
+          articles
+            .filter((a) => category === 'all' || a.category === category)
+            .flatMap((a) => a.sectors),
         ),
       ].sort((a, b) => a.localeCompare(b)),
-    [category],
+    [articles, category],
   )
 
-  const articles = useMemo(() => {
-    return NEWS_SEED.filter(
-      (a) =>
-        (category === 'all' || a.category === category) &&
-        (sector === null || a.sectors.includes(sector)),
-    ).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
-  }, [category, sector])
+  const visible = useMemo(
+    () =>
+      articles
+        .filter(
+          (a) =>
+            (category === 'all' || a.category === category) &&
+            (sector === null || a.sectors.includes(sector)),
+        )
+        .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')),
+    [articles, category, sector],
+  )
 
   const tabs: Array<{ key: NewsCategory | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
@@ -120,7 +75,15 @@ export default function News() {
   return (
     <>
       {/* HERO */}
-      <section className="mx-auto max-w-3xl px-6 pt-16 pb-10 text-center">
+      <section className="mx-auto max-w-3xl px-6 pt-16 pb-10 text-center relative">
+        {user && (
+          <Link
+            to="/news/review"
+            className="absolute right-6 top-16 hidden sm:inline-block case-number text-[11px] uppercase tracking-wide text-ink-soft hover:text-ink transition-colors"
+          >
+            Review queue →
+          </Link>
+        )}
         <p className="case-number text-seal text-sm mb-5 tracking-wide">CONSUMER WATCH</p>
         <h1 className="font-display text-4xl md:text-5xl leading-[1.15] tracking-tight text-ink mb-6">
           What the papers are reporting.
@@ -190,17 +153,15 @@ export default function News() {
       {/* LIST */}
       <section className="mx-auto max-w-3xl px-6 pt-6 pb-16">
         <p className="case-number text-[11px] uppercase tracking-wide text-ink-soft mb-4">
-          {articles.length} article{articles.length === 1 ? '' : 's'}
+          {visible.length} article{visible.length === 1 ? '' : 's'}
         </p>
 
         <div className="flex flex-col gap-5">
-          {articles.map((a) => (
-            <ArticleCard key={a.id} article={a} />
+          {visible.map((a) => (
+            <NewsCard key={a.id} article={a} />
           ))}
-          {articles.length === 0 && (
-            <p className="text-ink-soft text-center py-10">
-              No articles match this filter yet.
-            </p>
+          {visible.length === 0 && (
+            <p className="text-ink-soft text-center py-10">No articles match this filter yet.</p>
           )}
         </div>
 
