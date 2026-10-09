@@ -549,7 +549,9 @@ function PrecedentReview({
   const blocked = !usage?.aiEnabled ? 'off' : remaining === 0 ? 'limit' : null
   const allowance =
     usage && usage.aiEnabled
-      ? remaining === null
+      ? usage.isAdmin
+        ? 'Staff access: no limit'
+        : remaining === null
         ? usage.billingModel === 'pay_per_analysis' && usage.perAnalysisPrice !== null
           ? `Billed at ${rupees(usage.perAnalysisPrice)}`
           : 'Included in your plan'

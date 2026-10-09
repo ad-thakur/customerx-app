@@ -48,7 +48,11 @@ export function tokenCostUsd(input: number, output: number): number {
   return (input * MODEL_COST_PER_MTOK.input + output * MODEL_COST_PER_MTOK.output) / 1_000_000
 }
 
-/** Platform staff who may change any brand's plan (comma-separated emails). */
+/**
+ * Platform staff (comma-separated emails). Staff can open every brand's
+ * dashboard, change plans, and run AI analyses without the monthly allowance —
+ * their usage is still recorded, so cost-to-serve stays accurate.
+ */
 export function isAdmin(email: string): boolean {
   return (process.env.ADMIN_EMAILS ?? '')
     .split(',')
