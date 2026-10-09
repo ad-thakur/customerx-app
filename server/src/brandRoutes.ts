@@ -25,6 +25,7 @@ import {
   usageThisMonth,
   brandByKey,
   brandBySlug,
+  allBrands,
   brandsForEmail,
   createBrand,
   findBrand,
@@ -103,7 +104,7 @@ export async function requireMember(
     return null
   }
   const brand = await findBrand(String(req.params.brandId))
-  if (!brand || !(await isBrandMember(brand.id, user.email))) {
+  if (!brand || !(isAdmin(user.email) || (await isBrandMember(brand.id, user.email)))) {
     res.status(403).json({ error: 'You do not have access to this brand' })
     return null
   }
@@ -159,10 +160,16 @@ export type AiRunResult =
  * AI for better facts, writes the briefing, and starts the AI precedent
  * review, which attaches itself when done.
  */
-export async function runAiAnalysis(complaint: Complaint, brand: Brand): Promise<AiRunResult> {
+export async function runAiAnalysis(
+  complaint: Complaint,
+  brand: Brand,
+  opts: { unlimited?: boolean } = {},
+): Promise<AiRunResult> {
   if (!aiEnabled()) return { ok: false, reason: 'switched_off' }
   if (complaint.analysis?.review?.status === 'pending') return { ok: false, reason: 'busy' }
-  const usageId = await claimAnalysis(brand.id, analysisLimit(brand), complaint.id, 'ai_request')
+  // Staff runs skip the allowance but are still recorded as usage.
+  const limit = opts.unlimited ? null : analysisLimit(brand)
+  const usageId = await claimAnalysis(brand.id, limit, complaint.id, 'ai_request')
   if (usageId === null) return { ok: false, reason: 'limit' }
 
   const meter = newMeter()
@@ -246,7 +253,8 @@ brandRouter.get('/api/brand/me', async (req, res) => {
     res.status(401).json({ error: 'Please sign in' })
     return
   }
-  res.json({ brands: await brandsForEmail(user.email) })
+  // Staff see every brand, so they can support or demo any of them.
+  res.json({ brands: isAdmin(user.email) ? await allBrands() : await brandsForEmail(user.email) })
 })
 
 brandRouter.post('/api/brand', async (req, res) => {
@@ -381,7 +389,7 @@ brandRouter.get('/api/brand/:brandId/complaints', async (req, res) => {
     const u = await usageThisMonth(m.brand.id)
     res.json({
       brand: m.brand,
-      usage: { used: u.analyses, limit: analysisLimit(m.brand) },
+      usage: { used: u.analyses, limit: isAdmin(m.email) ? null : analysisLimit(m.brand) },
       stats: {
         total: all.length,
         open: open.length,
@@ -452,7 +460,7 @@ brandRouter.post('/api/brand/:brandId/complaints/:id/ai-analysis', async (req, r
   try {
     const m = await memberComplaint(req, res)
     if (!m) return
-    const r = await runAiAnalysis(m.complaint, m.brand)
+    const r = await runAiAnalysis(m.complaint, m.brand, { unlimited: isAdmin(m.email) })
     if (!r.ok) {
       const msg = {
         switched_off: 'AI analysis isn’t switched on yet',
@@ -880,7 +888,8 @@ async function usageView(brand: Brand, email: string) {
     plans: PLANS,
     limit,
     used: u.analyses,
-    remaining: limit === null ? null : Math.max(0, limit - u.analyses),
+    // The brand's real limit is still shown, but staff are never blocked by it.
+    remaining: limit === null || admin ? null : Math.max(0, limit - u.analyses),
     resetsOn: new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10),
     byDay: u.byDay,
     perAnalysisPrice: brand.perAnalysisPrice,

@@ -281,6 +281,12 @@ export async function brandsForEmail(email: string): Promise<Brand[]> {
   return res.rows.map(toBrand)
 }
 
+/** Every brand, for platform staff (ADMIN_EMAILS), who can open any of them. */
+export async function allBrands(): Promise<Brand[]> {
+  const res = await pool.query<BrandRow>(`SELECT * FROM brands ORDER BY created_at`)
+  return res.rows.map(toBrand)
+}
+
 export async function isBrandMember(brandId: string, email: string): Promise<boolean> {
   const res = await pool.query(`SELECT 1 FROM brand_members WHERE brand_id = $1 AND email = $2`, [
     brandId,
