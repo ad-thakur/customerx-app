@@ -22,7 +22,15 @@ export interface PrecedentCase {
   outcome: string | null
   judgmentText: string | null
   rawMeta: unknown
+  /**
+   * Canonical categories for *other* grounds this case also turns on, so it can
+   * be found when users search those categories. See crossReferenceCategories().
+   */
+  relatedCategories: string[]
 }
+
+/** Category for cases e-Jagriti files under no category at all. */
+export const UNCATEGORISED = 'UNCATEGORISED'
 
 export async function initPrecedentTable(): Promise<void> {
   await pool.query(`
@@ -40,11 +48,22 @@ export async function initPrecedentTable(): Promise<void> {
       outcome TEXT,
       judgment_text TEXT,
       raw_meta JSONB,
+      related_categories TEXT[] NOT NULL DEFAULT '{}',
       ingested_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `)
+  // Migrate tables created before related_categories existed.
+  await pool.query(`
+    ALTER TABLE precedent_cases
+      ADD COLUMN IF NOT EXISTS related_categories TEXT[] NOT NULL DEFAULT '{}'
+  `)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS precedent_cases_category_idx ON precedent_cases (category)
+  `)
+  // Supports the array-overlap (&&) used to widen search to cross-referenced cases.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS precedent_cases_related_idx
+      ON precedent_cases USING GIN (related_categories)
   `)
   // Full-text index over the judgment body for later "similar cases" lookups.
   await pool.query(`
@@ -61,14 +80,25 @@ export async function upsertPrecedent(p: PrecedentCase): Promise<'inserted' | 'u
       case_number, commission, category, complainant, respondent,
       complainant_advocate, respondent_advocate,
       filing_date, disposal_date, judgment_date,
-      outcome, judgment_text, raw_meta
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      outcome, judgment_text, raw_meta, related_categories
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     ON CONFLICT (case_number) DO UPDATE SET
+      -- A case the sweep stored without a category can gain one later.
+      category = CASE
+        WHEN precedent_cases.category = '${UNCATEGORISED}' THEN EXCLUDED.category
+        ELSE precedent_cases.category
+      END,
       outcome = EXCLUDED.outcome,
       disposal_date = EXCLUDED.disposal_date,
       judgment_date = EXCLUDED.judgment_date,
       judgment_text = COALESCE(EXCLUDED.judgment_text, precedent_cases.judgment_text),
       raw_meta = EXCLUDED.raw_meta,
+      -- related_categories is derived from judgment_text; only refresh it when
+      -- this ingest actually has text, so a text-less re-fetch can't wipe tags.
+      related_categories = CASE
+        WHEN EXCLUDED.judgment_text IS NOT NULL THEN EXCLUDED.related_categories
+        ELSE precedent_cases.related_categories
+      END,
       ingested_at = now()
     RETURNING (xmax = 0) AS inserted
     `,
@@ -86,6 +116,7 @@ export async function upsertPrecedent(p: PrecedentCase): Promise<'inserted' | 'u
       p.outcome,
       p.judgmentText,
       JSON.stringify(p.rawMeta),
+      p.relatedCategories,
     ],
   )
   return res.rows[0].inserted ? 'inserted' : 'updated'
@@ -168,7 +199,7 @@ const MIN_RANK = Number(process.env.PRECEDENT_MIN_RANK ?? 0.05)
 
 export type PrecedentHit = Pick<
   PrecedentCase,
-  'caseNumber' | 'complainant' | 'respondent' | 'outcome'
+  'caseNumber' | 'commission' | 'complainant' | 'respondent' | 'outcome'
 > & {
   judgmentDate: Date | string | null // pg returns DATE columns as Date objects
   snippet: string
@@ -191,6 +222,13 @@ export type PrecedentHit = Pick<
  * which is how a washing-machine complaint used to surface agricultural
  * disputes (AGRICULTURE is a populated NCDRC category).
  *
+ * Ordering within the in-scope categories is closest-first: results are ranked
+ * by how much of the query's product/service vocabulary each judgment matches,
+ * so a case about the same product surfaces above one about a merely related
+ * product, above a generic same-ground case. See the `q` CTE below for how the
+ * match is loosened from "every term" to "any term, ranked" to make that
+ * gradient possible.
+ *
  * Returns an empty array — deliberately, not a filler set — when the query has
  * no discriminating terms or nothing clears MIN_RANK. Callers should render
  * "No similar cases have been filed." rather than showing weak matches, since
@@ -210,8 +248,18 @@ export async function searchLocalPrecedents(
 
   const res = await pool.query(
     `
-    WITH q AS (SELECT plainto_tsquery('english', $1) AS tsq)
+    -- plainto_tsquery ANDs every term ('wash' & 'machin' & 'defect'), so a
+    -- multi-word product description would match almost nothing. Swapping the
+    -- '&'s for '|'s turns it into an OR query built from the same stemmed,
+    -- stopword-free lexemes, so a judgment that matches only part of the
+    -- description still appears — just lower down. ts_rank then orders matches
+    -- from the closest product/service to the most distant. The category
+    -- restriction below is still what keeps genuinely unrelated cases out.
+    WITH q AS (
+      SELECT replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery AS tsq
+    )
     SELECT case_number AS "caseNumber",
+           commission,
            complainant,
            respondent,
            outcome,
@@ -223,13 +271,111 @@ export async function searchLocalPrecedents(
     FROM precedent_cases, q
     WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
       AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= $2
-      AND ($4::text[] IS NULL OR category = ANY($4::text[]))
+      -- In scope if filed under a requested category OR cross-referenced to one
+      -- (e.g. an unfair-trade case that also turns on defective goods shows up
+      -- when searching defective goods).
+      AND ($4::text[] IS NULL OR category = ANY($4::text[]) OR related_categories && $4::text[])
     ORDER BY rank DESC
     LIMIT $3
     `,
     [terms, MIN_RANK, limit, restrict ? categories : null],
   )
   return res.rows
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sweep progress                                                             */
+/*                                                                            */
+/* A state sweep is tens of thousands of multi-MB requests. It records each   */
+/* finished commission-year here so a crashed or redeployed run skips what is */
+/* already done instead of downloading it again.                              */
+/* -------------------------------------------------------------------------- */
+
+export async function initProgressTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingest_progress (
+      task TEXT PRIMARY KEY,
+      cases INT NOT NULL,
+      finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+}
+
+export async function finishedTasks(): Promise<Set<string>> {
+  const res = await pool.query<{ task: string }>(`SELECT task FROM ingest_progress`)
+  return new Set(res.rows.map((r) => r.task))
+}
+
+export async function markTaskFinished(task: string, cases: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO ingest_progress (task, cases) VALUES ($1, $2)
+     ON CONFLICT (task) DO UPDATE SET cases = EXCLUDED.cases, finished_at = now()`,
+    [task, cases],
+  )
+}
+
+/** Every case number already stored — lets a re-load skip finished rows. */
+export async function existingCaseNumbers(): Promise<Set<string>> {
+  const res = await pool.query<{ case_number: string }>(`SELECT case_number FROM precedent_cases`)
+  return new Set(res.rows.map((r) => r.case_number))
+}
+
+/* -------------------------------------------------------------------------- */
+/* OCR backfill                                                               */
+/*                                                                            */
+/* Rows whose order exists on e-Jagriti (orderAvailabilityStatusId 2) but came */
+/* back as a scanned PDF with no text layer. Status 1 means no order was ever  */
+/* uploaded, so there is nothing to OCR for those.                            */
+/* -------------------------------------------------------------------------- */
+
+export interface OcrCandidate {
+  caseNumber: string
+  commissionId: number
+  category: string
+  /** YYYY-MM-DD, or null when the row has no disposal date. */
+  disposalDate: string | null
+}
+
+/** Text-less rows with a scanned order, minus those an earlier OCR pass tried. */
+export async function listOcrCandidates(): Promise<OcrCandidate[]> {
+  const res = await pool.query<{
+    case_number: string
+    commission_id: string | null
+    category: string
+    disposal_date: Date | null
+  }>(
+    `SELECT p.case_number, p.raw_meta->>'commissionId' AS commission_id, p.category, p.disposal_date
+       FROM precedent_cases p
+      WHERE p.judgment_text IS NULL
+        AND p.raw_meta->>'orderAvailabilityStatusId' = '2'
+        AND NOT EXISTS (SELECT 1 FROM ingest_progress g WHERE g.task = 'ocr:' || p.case_number)
+      ORDER BY p.disposal_date DESC NULLS LAST`,
+  )
+  return res.rows.map((r) => ({
+    caseNumber: r.case_number,
+    // NCDRC rows from the category ingest predate the commissionId field.
+    commissionId: r.commission_id ? Number(r.commission_id) : 11000000,
+    category: r.category,
+    disposalDate: r.disposal_date ? r.disposal_date.toISOString().slice(0, 10) : null,
+  }))
+}
+
+/**
+ * Fill judgment_text (and the related_categories derived from it), but only
+ * while it is still empty, so a re-run can't clobber anything.
+ */
+export async function fillJudgmentText(
+  caseNumber: string,
+  text: string,
+  relatedCategories: string[],
+): Promise<boolean> {
+  const res = await pool.query(
+    `UPDATE precedent_cases
+        SET judgment_text = $2, related_categories = $3, ingested_at = now()
+      WHERE case_number = $1 AND judgment_text IS NULL`,
+    [caseNumber, text, relatedCategories],
+  )
+  return (res.rowCount ?? 0) > 0
 }
 
 export async function closePrecedentPool(): Promise<void> {

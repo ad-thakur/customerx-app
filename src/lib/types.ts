@@ -33,8 +33,12 @@ export interface IntakeData {
   fullName: string
   phone: string
   email: string
+  /** Street / flat line of the complainant's postal address. */
+  addressLine: string
   city: string
   state: string
+  /** PIN code of the complainant's postal address. */
+  pincode: string
 
   // Opposite party
   companyName: string
@@ -51,6 +55,18 @@ export interface IntakeData {
   // (see normalizeIntake in lib/grounds.ts).
   grounds: GroundId[]
   narrative: string
+  /** "one automatic washing machine, Model XYZ" — names the subject matter. */
+  itemDescription: string
+  /** Invoice, order or booking reference for the transaction. */
+  invoiceNo: string
+  /** UPI, credit card, net banking, cash, cheque, EMI, wallet. */
+  paymentMode: string
+  /** What the opposite party promised: advert, warranty, sales representation. */
+  representations: string
+  /** How the consumer first raised the grievance with the company. */
+  grievanceMode: string
+  /** Complaint or ticket reference from that grievance, where one was issued. */
+  grievanceRef: string
   transactionDate: string // ISO date
   incidentDate: string // ISO date
   claimAmount: number | null
@@ -84,13 +100,21 @@ export const emptyIntake: IntakeData = {
   fullName: '',
   phone: '',
   email: '',
+  addressLine: '',
   city: '',
   state: '',
+  pincode: '',
   companyName: '',
   companyAddress: '',
   companyEmail: '',
   grounds: [],
   narrative: '',
+  itemDescription: '',
+  invoiceNo: '',
+  paymentMode: '',
+  representations: '',
+  grievanceMode: '',
+  grievanceRef: '',
   transactionDate: '',
   incidentDate: '',
   claimAmount: null,

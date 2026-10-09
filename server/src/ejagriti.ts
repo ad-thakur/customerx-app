@@ -64,16 +64,72 @@ const HEADERS = {
   'User-Agent': 'ConsumerX-ingest/0.1 (precedent research; contact: adnaan@thakur.com)',
 }
 
-async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...HEADERS, ...init?.headers } })
+/** Abandon a single request that stalls: e-Jagriti can hold a connection open forever. */
+const REQUEST_TIMEOUT_MS = 180_000
+
+/** Backoff waits before each retry. Length also sets the number of retries. */
+const RETRY_DELAYS_MS = [2_000, 8_000, 30_000]
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** A non-2xx HTTP response. `status` lets the retry logic tell 5xx from 4xx. */
+class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
+
+/** An error carried in the response body (HTTP 200 but `error` set). Never retried. */
+class EJagritiApiError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EJagritiApiError'
+  }
+}
+
+/**
+ * Retry only transient failures:
+ *  - 5xx responses (server-side, likely to clear)
+ *  - network failures and request timeouts (fetch throws TypeError / an
+ *    AbortSignal.timeout DOMException — neither is one of our own error types)
+ * Never retry a 4xx (our request is wrong) or an e-Jagriti body error.
+ */
+function isRetryable(err: unknown): boolean {
+  if (err instanceof EJagritiApiError) return false
+  if (err instanceof HttpError) return err.status >= 500 && err.status < 600
+  return true
+}
+
+async function getJsonOnce<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    headers: { ...HEADERS, ...init?.headers },
+  })
   if (!res.ok) {
-    throw new Error(`e-Jagriti request failed: ${res.status} ${res.statusText} (${path})`)
+    throw new HttpError(res.status, `e-Jagriti request failed: ${res.status} ${res.statusText} (${path})`)
   }
   const body = (await res.json()) as EJagritiEnvelope<T>
   if (body.error && body.error !== 'false') {
-    throw new Error(`e-Jagriti API error on ${path}: ${body.message}`)
+    throw new EJagritiApiError(`e-Jagriti API error on ${path}: ${body.message}`)
   }
   return body.data
+}
+
+async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getJsonOnce<T>(path, init)
+    } catch (err) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isRetryable(err)) throw err
+      const wait = RETRY_DELAYS_MS[attempt]
+      console.warn(
+        `  ! ${path} failed (${(err as Error).message}); retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${wait / 1000}s`,
+      )
+      await sleep(wait)
+    }
+  }
 }
 
 export async function fetchCaseCategories(): Promise<EJagritiCaseCategory[]> {
@@ -232,19 +288,116 @@ export interface SearchPageOptions {
 }
 
 export async function searchCasesByCategory(opts: SearchPageOptions): Promise<EJagritiCaseRecord[]> {
+  return search({
+    commissionId: opts.commissionId,
+    page: opts.page,
+    size: opts.size,
+    fromDate: opts.fromDate,
+    toDate: opts.toDate,
+    dateRequestType: opts.dateRequestType ?? 2,
+    serchType: 6,
+    serchTypeValue: String(opts.categoryId),
+    orderType: opts.orderType ?? 2,
+  })
+}
+
+function search(body: Record<string, unknown>): Promise<EJagritiCaseRecord[]> {
   return getJson<EJagritiCaseRecord[]>('/services/case/caseFilingService/v2/getCaseDetailsBySearchType', {
     method: 'POST',
-    body: JSON.stringify({
+    body: JSON.stringify(body),
+  })
+}
+
+/**
+ * Every judgement a commission delivered in a disposal window, regardless of
+ * category. A free-text search (serchType 8) with an empty value matches all
+ * cases — it is the only way to reach the ~10% of district cases that carry no
+ * category at all, which a category-by-category ingest never sees.
+ */
+export async function searchAllJudgments(opts: {
+  commissionId: number
+  fromDate: string
+  toDate: string
+  page: number
+  size: number
+}): Promise<EJagritiCaseRecord[]> {
+  return search({ ...opts, dateRequestType: 2, serchType: 8, serchTypeValue: '', orderType: 2 })
+}
+
+/**
+ * Case numbers filed under a category, cheaply. orderType 1 (daily orders)
+ * returns the same case metadata as a judgement search but without the embedded
+ * order document, so a page of 100 costs tens of KB rather than tens of MB. Its
+ * result set is a superset of the judgements in the window (it also lists cases
+ * that only have daily orders), which makes it suitable for a case → category
+ * lookup but not as a list of judgements.
+ */
+export async function listCaseNumbersInCategory(opts: {
+  commissionId: number
+  categoryId: number
+  fromDate: string
+  toDate: string
+}): Promise<string[]> {
+  const size = 100
+  const out: string[] = []
+  const pageOf = (page: number, pageSize: number) =>
+    search({
       commissionId: opts.commissionId,
-      page: opts.page,
-      size: opts.size,
+      page,
+      size: pageSize,
       fromDate: opts.fromDate,
       toDate: opts.toDate,
-      dateRequestType: opts.dateRequestType ?? 2,
+      dateRequestType: 2,
       serchType: 6,
       serchTypeValue: String(opts.categoryId),
-      orderType: opts.orderType ?? 2,
-    }),
+      orderType: 1,
+    })
+  // Some commissions embed daily-order documents even here (Raigad: ~40 MB per
+  // 100 rows; NCDRC more), so a full page can be cut off. Re-read a failed page
+  // in smaller pages, down to single cases.
+  const read = async (page: number, pageSize: number): Promise<EJagritiCaseRecord[]> => {
+    try {
+      return await pageOf(page, pageSize)
+    } catch (err) {
+      if (pageSize === 1) throw err
+      const smaller = pageSize >= 100 ? 10 : 1
+      const rows: EJagritiCaseRecord[] = []
+      for (let sub = 0; sub < pageSize / smaller; sub++) {
+        const part = await read((page * pageSize) / smaller + sub, smaller)
+        rows.push(...part)
+        if (part.length < smaller) break
+      }
+      return rows
+    }
+  }
+  for (let page = 0; ; page++) {
+    const rows = await read(page, size)
+    for (const r of rows) out.push(r.caseNumber)
+    if (rows.length < size) return out
+  }
+}
+
+/**
+ * Fetch a single case by its full case number (serchType 1). Used as a second
+ * chance at the order text: the same case fetched by number sometimes returns an
+ * HTML order where the listing returned an unparseable PDF.
+ */
+export async function searchCaseByNumber(opts: {
+  caseNumber: string
+  commissionId: number
+  fromDate: string
+  toDate: string
+}): Promise<EJagritiCaseRecord[]> {
+  return search({
+    commissionId: opts.commissionId,
+    page: 0,
+    size: 5,
+    fromDate: opts.fromDate,
+    toDate: opts.toDate,
+    dateRequestType: 2,
+    serchType: 1,
+    serchTypeValue: opts.caseNumber,
+    orderType: 2,
   })
 }
 

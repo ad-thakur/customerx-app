@@ -26,8 +26,10 @@ export interface IntakeData {
   fullName: string
   phone: string
   email: string
+  addressLine: string
   city: string
   state: string
+  pincode: string
   companyName: string
   companyAddress: string
   /** Grievance-officer / customer-care address the notice is emailed to. */
@@ -37,6 +39,13 @@ export interface IntakeData {
   /** @deprecated pre-multi-ground records only — read via readGrounds(). */
   ground?: GroundId | null
   narrative: string
+  /** Notice-specifics gathered after intake (see PUT /api/cases/:id/intake). */
+  itemDescription: string
+  invoiceNo: string
+  paymentMode: string
+  representations: string
+  grievanceMode: string
+  grievanceRef: string
   transactionDate: string
   incidentDate: string
   claimAmount: number | null

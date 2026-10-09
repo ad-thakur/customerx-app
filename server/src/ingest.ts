@@ -59,8 +59,6 @@
  *   npm run ingest -- --count --all-mapped --from 2010-01-01
  *   npm run ingest -- --count --all-states --category "HOUSE HOLD GOODS" --from 2015-01-01
  */
-// pdf-parse's package entry has a debug block that breaks under ESM; import the lib directly.
-import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import {
   COMMISSION_NCDRC,
   commissionNames,
@@ -71,15 +69,21 @@ import {
   resolveCategoryId,
   resolveCommission,
   searchCasesByCategory,
-  type EJagritiCaseRecord,
 } from './ejagriti.js'
-import { allCategories, GROUND_CATEGORIES, isGroundId, type CategoryRef } from './categories.js'
+import {
+  allCategories,
+  GROUND_CATEGORIES,
+  isGroundId,
+  crossReferenceCategories,
+  type CategoryRef,
+} from './categories.js'
 import {
   initPrecedentTable,
   upsertPrecedent,
   countPrecedents,
   closePrecedentPool,
 } from './precedentStore.js'
+import { extractJudgmentText } from './judgmentText.js'
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`)
@@ -214,19 +218,6 @@ function isoDaysAgo(days: number): string {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-async function extractJudgmentText(rec: EJagritiCaseRecord): Promise<string | null> {
-  const b64 = rec.judgmentOrderDocumentBase64
-  if (!b64) return null
-  try {
-    const parsed = await pdfParse(Buffer.from(b64, 'base64'))
-    const text = parsed.text?.replace(/\s+\n/g, '\n').trim()
-    return text && text.length > 0 ? text : null
-  } catch (err) {
-    console.warn(`  ! could not parse judgment PDF for ${rec.caseNumber}: ${(err as Error).message}`)
-    return null
-  }
-}
 
 async function main(): Promise<void> {
   // --list-categories is a read-only lookup against e-Jagriti; no database needed.
@@ -479,23 +470,30 @@ async function ingestCategory(o: IngestOptions): Promise<{ inserted: number; upd
     for (const rec of records) {
       const text = await extractJudgmentText(rec)
       const { judgmentOrderDocumentBase64: _pdf, ...meta } = rec
-      const result = await upsertPrecedent({
-        caseNumber: rec.caseNumber,
-        commission: commissionLabel,
-        category,
-        complainant: rec.complainantName,
-        respondent: rec.respondentName,
-        complainantAdvocate: rec.complainantAdvocateName,
-        respondentAdvocate: rec.respondentAdvocateName,
-        filingDate: rec.caseFilingDate,
-        disposalDate: rec.dateOfDisposal,
-        judgmentDate: rec.judgemtmentDate,
-        outcome: rec.caseStageName,
-        judgmentText: text,
-        rawMeta: meta,
-      })
-      result === 'inserted' ? inserted++ : updated++
-      console.log(`  ${result === 'inserted' ? '+' : '~'} ${rec.caseNumber} — ${rec.caseStageName ?? 'stage unknown'}${text ? ` (${text.length.toLocaleString()} chars of judgment text)` : ' (no judgment PDF)'}`)
+      // One bad row (DB constraint, oversized field, transient write error) must
+      // not abandon the rest of the page — log it and move on.
+      try {
+        const result = await upsertPrecedent({
+          caseNumber: rec.caseNumber,
+          commission: commissionLabel,
+          category,
+          complainant: rec.complainantName,
+          respondent: rec.respondentName,
+          complainantAdvocate: rec.complainantAdvocateName,
+          respondentAdvocate: rec.respondentAdvocateName,
+          filingDate: rec.caseFilingDate,
+          disposalDate: rec.dateOfDisposal,
+          judgmentDate: rec.judgemtmentDate,
+          outcome: rec.caseStageName,
+          judgmentText: text,
+          rawMeta: meta,
+          relatedCategories: crossReferenceCategories(text, category),
+        })
+        result === 'inserted' ? inserted++ : updated++
+        console.log(`  ${result === 'inserted' ? '+' : '~'} ${rec.caseNumber} — ${rec.caseStageName ?? 'stage unknown'}${text ? ` (${text.length.toLocaleString()} chars of judgment text)` : ' (no judgment PDF)'}`)
+      } catch (err) {
+        console.error(`  ! failed to save ${rec.caseNumber}: ${(err as Error).message}`)
+      }
     }
 
     // Be polite to a government service.
