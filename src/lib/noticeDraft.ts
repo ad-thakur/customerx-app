@@ -33,6 +33,7 @@ import type { CaseView, DispatchMethod } from './caseStore'
 import { characterisations, groundListLabel, readGrounds } from './grounds'
 import { fmtDate, inr, noticeRef } from './caseStore'
 import type { CommissionLevel, EvidenceFile } from './types'
+import { BRAND_NAME } from './brand'
 
 export const COMPLIANCE_DAYS = 30
 
@@ -56,7 +57,7 @@ export function harassmentAmount(claim: number, level: CommissionLevel): number 
 }
 
 /** Name in which the notice is transmitted on the complainant's behalf. */
-export const PLATFORM_NAME = 'ConsumerX'
+export const PLATFORM_NAME = BRAND_NAME
 
 /**
  * Strips characters that mark text as machine-written from a dispatched Indian
@@ -530,7 +531,7 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     id: 'dispatch',
     kind: 'dispatch',
     text: `Transmitted by ${PLATFORM_NAME} on behalf of and under the instructions of the complainant named above. ${PLATFORM_NAME} is an online consumer grievance platform and does not act as an advocate or pleader. The contents of this notice are those of the complainant, and the notice is issued and signed by the complainant in person under the Consumer Protection Act, 2019.`,
-    hint: 'This line records that Consumer X transmitted the notice on your behalf. It does not change the fact that the notice is issued and signed by you.',
+    hint: `This line records that ${BRAND_NAME} transmitted the notice on your behalf. It does not change the fact that the notice is issued and signed by you.`,
   })
 
   /* --- Annexures --------------------------------------------------------- */

@@ -3,6 +3,7 @@
 // (api.indiankanoon.org) before real launch, per the concept note.
 
 import * as cheerio from 'cheerio'
+import { BRAND_DOMAIN, BRAND_SLUG } from './brand.js'
 
 export interface PrecedentResult {
   title: string
@@ -18,7 +19,7 @@ export async function searchPrecedents(query: string): Promise<PrecedentResult[]
   const response = await fetch(searchUrl, {
     headers: {
       'User-Agent':
-        'ConsumerX-Prototype/1.0 (precedent research feature; contact grievance@consumerx.co.in)',
+        `${BRAND_SLUG}-Prototype/1.0 (precedent research feature; contact grievance@${BRAND_DOMAIN})`,
     },
     signal: AbortSignal.timeout(10_000),
   })

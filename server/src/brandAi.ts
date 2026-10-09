@@ -18,6 +18,7 @@ import { extractFactsByRules, type ComplaintAnalysis, type ExtractedFacts } from
 import type { Brand, Complaint, OfferKind } from './brandStore.js'
 import type { GroundId } from './types.js'
 import { aiEnabled } from './aiSwitch.js'
+import { BRAND_NAME } from './brand.js'
 
 const MODEL = process.env.BRAND_AI_MODEL ?? 'claude-opus-5-5'
 
@@ -249,7 +250,7 @@ export function templateResponse(
     'You can follow this complaint, read our responses, add details or correct anything we have got wrong here:',
     trackUrl,
     '',
-    'This tracking page is provided by ConsumerX, an independent platform. Using it is free and does not affect any of your rights as a consumer.',
+    `This tracking page is provided by ${BRAND_NAME}, an independent platform. Using it is free and does not affect any of your rights as a consumer.`,
     '',
     'Warm regards,',
     `Customer Care, ${brand.name}`,

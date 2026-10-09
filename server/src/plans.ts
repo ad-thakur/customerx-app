@@ -48,7 +48,7 @@ export function tokenCostUsd(input: number, output: number): number {
   return (input * MODEL_COST_PER_MTOK.input + output * MODEL_COST_PER_MTOK.output) / 1_000_000
 }
 
-/** Consumer X staff who may change any brand's plan (comma-separated emails). */
+/** Platform staff who may change any brand's plan (comma-separated emails). */
 export function isAdmin(email: string): boolean {
   return (process.env.ADMIN_EMAILS ?? '')
     .split(',')

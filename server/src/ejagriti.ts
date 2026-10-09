@@ -22,6 +22,7 @@
  *    take 20-40 seconds and run to several MB — keep page sizes small and throttle politely.
  *  - Judgments are public documents (Copyright Act 1957, s.52(1)(q)); ingest respectfully.
  */
+import { BRAND_SLUG } from './brand.js'
 
 const BASE = 'https://e-jagriti.gov.in'
 
@@ -61,7 +62,7 @@ interface EJagritiEnvelope<T> {
 const HEADERS = {
   'Content-Type': 'application/json',
   // Be a good citizen: identify ourselves.
-  'User-Agent': 'ConsumerX-ingest/0.1 (precedent research; contact: adnaan@thakur.com)',
+  'User-Agent': `${BRAND_SLUG}-ingest/0.1 (precedent research; contact: adnaan@thakur.com)`,
 }
 
 /** Abandon a single request that stalls: e-Jagriti can hold a connection open forever. */

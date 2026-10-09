@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getCaseView, payCase, type CaseView } from '../lib/caseStore'
+import { BRAND_NAME } from '../lib/brand'
 
 type PayStage = 'closed' | 'form' | 'waiting' | 'done'
 
@@ -78,7 +79,7 @@ export default function Payment() {
         Pay ₹499 securely
       </button>
       <p className="text-sm text-ink-soft text-center mt-3">
-        UPI · Cards · Netbanking — processed by our payment partner. Consumer X never stores card details.
+        UPI · Cards · Netbanking — processed by our payment partner. {BRAND_NAME} never stores card details.
       </p>
       <p className="text-center mt-8">
         <Link to="/result" className="text-ink-soft hover:text-ink text-sm font-medium">← Back to your case summary</Link>
@@ -95,7 +96,7 @@ export default function Payment() {
             {stage === 'form' && (
               <>
                 <div className="flex justify-between items-center mb-5">
-                  <p className="font-medium text-ink">Consumer X · ₹499</p>
+                  <p className="font-medium text-ink">{BRAND_NAME} · ₹499</p>
                   <button
                     onClick={() => setStage('closed')}
                     className="text-ink-soft hover:text-ink text-xl leading-none"

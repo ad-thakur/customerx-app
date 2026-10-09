@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useBrand } from './BrandShell'
 import { loadUsage, rupees, setBilling, setUsageCap, type BillingModel, type Usage } from '../../lib/brandApi'
+import { BRAND_NAME } from '../../lib/brand'
 
 export default function BrandUsage() {
   const { brand, reload } = useBrand()
@@ -191,7 +192,7 @@ function CapEditor({ u, onSaved }: { u: Usage; onSaved: (u: Usage) => void }) {
   )
 }
 
-/** Consumer X staff only: set the brand's billing. */
+/** Platform staff only: set the brand's billing. */
 function AdminPanel({ u, onSaved }: { u: Usage; onSaved: (u: Usage) => void }) {
   const { brand } = useBrand()
   const [model, setModel] = useState<BillingModel>(u.billingModel)
@@ -204,7 +205,7 @@ function AdminPanel({ u, onSaved }: { u: Usage; onSaved: (u: Usage) => void }) {
 
   return (
     <section className="border-2 border-dashed border-seal/40 rounded-lg bg-white/60 p-6">
-      <p className="case-number text-[11px] text-seal">CONSUMER X STAFF ONLY</p>
+      <p className="case-number text-[11px] text-seal">{BRAND_NAME.toUpperCase()} STAFF ONLY</p>
       <h2 className="font-display text-xl text-ink mb-3">Billing for {brand.name}</h2>
       {u.internal && (
         <p className="text-sm text-ink mb-4">

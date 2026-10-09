@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import Logo from './Logo'
 import { useAuth } from '../lib/AuthContext'
+import { BRAND_NAME } from '../lib/brand'
 
 const NAV = [
   { label: 'About us', to: '/about', router: true },
@@ -37,8 +38,8 @@ export default function Header() {
       <div className="mx-auto max-w-6xl px-6 flex items-center justify-between h-20">
         <Link to="/" onClick={close} className="flex items-center gap-3 group">
           <Logo className="w-9 h-9 text-ink shrink-0 group-hover:text-seal transition-colors" />
-          <span className="font-display text-2xl font-semibold tracking-tight text-ink">
-            Consumer X
+          <span className="font-display text-2xl font-semibold tracking-tight text-ink whitespace-nowrap">
+            {BRAND_NAME}
           </span>
         </Link>
 

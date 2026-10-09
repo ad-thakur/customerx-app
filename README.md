@@ -1,4 +1,4 @@
-# Consumer X — Initial version (full loop, deployable)
+# All Square — Initial version (full loop, deployable)
 
 Consumer complaint intake and case-management flow for the Consumer Protection
 Act, 2019. This build covers the complete product loop from the concept docs —
@@ -34,7 +34,7 @@ and recovery range. Without the key, assessments are rules-only.
   Every paragraph is editable in place, and edits persist to the case.
   Dispatch is **manual and honest**: download an editable `.docx`, open a
   prefilled email draft, send it yourself, then confirm — which starts the
-  30-day clock. Consumer X never claims to have sent anything it hasn't.
+  30-day clock. All Square never claims to have sent anything it hasn't.
 - **Case dashboard** (`/cases`): all cases with status, recovered total, response
   countdowns
 - **Escalation tracking** (`/case/:id`): case timeline, 30-day countdown ring,

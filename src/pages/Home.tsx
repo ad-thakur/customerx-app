@@ -10,6 +10,7 @@ import {
   HazardousGoodsIcon,
   MisleadingAdIcon,
 } from '../components/EvidenceIcons'
+import { BRAND_NAME } from '../lib/brand'
 
 const HOME_CLUSTERS = [GROUP_CLAIMS[0], GROUP_CLAIMS[1], GROUP_CLAIMS[3]] // Vayu, Nimbus, Zephyr
 
@@ -38,7 +39,7 @@ export default function Home() {
           </h1>
           <p className="mt-7 text-lg text-ink max-w-lg font-medium">
             Companies count on complaints being too much effort to pursue — especially the ones that
-            do it repeatedly. Consumer X exists so you can push back, on equal footing, using the law
+            do it repeatedly. {BRAND_NAME} exists so you can push back, on equal footing, using the law
             that already protects you.
           </p>
           <p className="mt-4 text-lg text-ink-soft max-w-lg">
@@ -114,7 +115,7 @@ export default function Home() {
           </Link>
         </div>
         <p className="text-ink-soft max-w-2xl mt-3 mb-8">
-          When many people are wronged the same way by the same company, Consumer X groups the claims
+          When many people are wronged the same way by the same company, {BRAND_NAME} groups the claims
           — by company, product and failure — and puts one combined number in front of the brand.
           Isolated complaints get ignored. Concentrated liability gets settled.
         </p>

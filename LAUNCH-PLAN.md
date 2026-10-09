@@ -1,4 +1,4 @@
-# Consumer X — the launch plan you can run yourself
+# All Square — the launch plan you can run yourself
 
 For running the work with Claude without writing code. `PRODUCTION.md` is the
 engineering detail behind every step; this file is the running order and the
@@ -307,7 +307,7 @@ them; the DPDP Act requires substance behind the privacy one.
 **Say this:**
 
 > Draft terms of service, a privacy policy, a refund policy and a contact page
-> for Consumer X, as real pages on the site. Base every sentence on what the
+> for All Square, as real pages on the site. Base every sentence on what the
 > product actually does — read the code, do not assume. Flag anything you are
 > unsure about rather than writing something plausible. For the refund policy,
 > give me two or three options with the trade-offs, because I have to choose.

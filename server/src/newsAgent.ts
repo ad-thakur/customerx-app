@@ -22,6 +22,7 @@ import {
   closeNewsPool,
   type NewsCategory,
 } from './newsStore.js'
+import { BRAND_DOMAIN, BRAND_SLUG } from './brand.js'
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -82,7 +83,7 @@ async function fetchFeed(feed: NewsFeed): Promise<Candidate[]> {
   try {
     const res = await fetch(feed.url, {
       signal: AbortSignal.timeout(30_000),
-      headers: { 'User-Agent': 'ConsumerX-news/0.1 (+https://consumerx.co.in)' },
+      headers: { 'User-Agent': `${BRAND_SLUG}-news/0.1 (+https://${BRAND_DOMAIN})` },
     })
     if (!res.ok) {
       console.warn(`  ! ${feed.label}: HTTP ${res.status}`)

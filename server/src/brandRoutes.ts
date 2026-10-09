@@ -44,6 +44,7 @@ import {
   type ThreadEntry,
 } from './brandStore.js'
 import { aiEnabled } from './aiSwitch.js'
+import { BRAND_NAME } from './brand.js'
 
 export const brandRouter = express.Router()
 
@@ -889,7 +890,7 @@ async function usageView(brand: Brand, email: string) {
         : null,
     aiEnabled: aiEnabled(),
     isAdmin: admin,
-    // What this brand costs us to serve — Consumer X staff only.
+    // What this brand costs us to serve — platform staff only.
     internal: admin
       ? { inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: tokenCostUsd(u.inputTokens, u.outputTokens) }
       : null,
@@ -925,13 +926,13 @@ brandRouter.put('/api/brand/:brandId/usage/cap', async (req, res) => {
   res.json(await usageView(brand!, m.email))
 })
 
-/** Plan changes are made by Consumer X staff (ADMIN_EMAILS), not by brands. */
+/** Plan changes are made by platform staff (ADMIN_EMAILS), not by brands. */
 brandRouter.patch('/api/brand/:brandId/billing', async (req, res) => {
   try {
     const m = await requireMember(req, res)
     if (!m) return
     if (!isAdmin(m.email)) {
-      res.status(403).json({ error: 'Only Consumer X staff can change plans' })
+      res.status(403).json({ error: `Only ${BRAND_NAME} staff can change plans` })
       return
     }
     const b = req.body as Record<string, unknown>

@@ -4,6 +4,7 @@ import NewsCard from '../components/NewsCard'
 import { useAuth } from '../lib/AuthContext'
 import { fetchPublished, type NewsItem } from '../lib/newsApi'
 import { NEWS_SEED, CATEGORY_LABEL, type NewsCategory } from '../lib/newsSeed'
+import { BRAND_NAME } from '../lib/brand'
 
 function TricolorRule() {
   return (
@@ -166,7 +167,7 @@ export default function News() {
         </div>
 
         <p className="text-xs text-ink-soft/80 mt-10 leading-relaxed border-t border-line pt-6">
-          Summaries are written by Consumer X for awareness only and attribute the reporting source;
+          Summaries are written by {BRAND_NAME} for awareness only and attribute the reporting source;
           full articles remain on the publishers' websites. This page is a news index, not legal
           advice. Companies are named as reported by third-party sources.
         </p>

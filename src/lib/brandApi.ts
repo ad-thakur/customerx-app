@@ -5,6 +5,7 @@
 
 import { getSession } from './auth'
 import type { GroundId } from './types'
+import { BRAND_NAME } from './brand'
 
 const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
@@ -479,7 +480,7 @@ export function ago(iso: string): string {
 export const SOURCE_LABEL: Record<ComplaintSource, string> = {
   web: 'Website',
   email: 'Email',
-  hosted: 'ConsumerX form',
+  hosted: `${BRAND_NAME} form`,
   manual: 'Added manually',
   social: 'Social media',
 }
@@ -503,7 +504,7 @@ export const OFFER_LABEL: Record<OfferKind, string> = {
   promo: 'Goodwill voucher',
 }
 
-const SELECTED_KEY = 'consumerx.brand.v1'
+const SELECTED_KEY = 'allsquare.brand.v1'
 export function rememberedBrand(): string | null {
   try {
     return localStorage.getItem(SELECTED_KEY)

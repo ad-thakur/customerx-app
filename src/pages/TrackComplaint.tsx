@@ -11,6 +11,7 @@ import {
   type ComplaintStatus,
   type TrackView,
 } from '../lib/brandApi'
+import { BRAND_NAME } from '../lib/brand'
 
 // The consumer's view of a complaint they made directly to a brand, reached
 // from the link in the brand's first response. No account needed: the token
@@ -209,7 +210,7 @@ export default function TrackComplaint() {
       {/* The way out, if this doesn't work. */}
       <section className="mt-12 border-t border-line pt-6">
         <p className="text-sm text-ink-soft leading-relaxed">
-          This page is run by <b className="text-ink">Consumer X</b>, an independent platform. It is free for you, and
+          This page is run by <b className="text-ink">{BRAND_NAME}</b>, an independent platform. It is free for you, and
           nothing here limits your rights under the Consumer Protection Act, 2019.{' '}
           {open || v.status === 'closed' ? (
             <>
