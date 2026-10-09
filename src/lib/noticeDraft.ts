@@ -17,19 +17,65 @@
 //    chronological sub-paragraphs, rather than dumped as a single italic
 //    blob. A notice that recites facts specifically is the one that reads as
 //    litigation-ready.
-//  - Where the intake genuinely does not capture something a notice needs
-//    (invoice number, mode of payment, the representations relied upon), the
-//    draft carries an explicit [BRACKETED] placeholder. That is the standard
-//    drafting convention and is honest — better than inventing a fact or
-//    quietly omitting a limb of the claim.
+//  - The draft carries no [BRACKETED] placeholders. The notice-specifics the
+//    intake form does not ask for (the exact goods, invoice number, mode of
+//    payment, the representations relied upon) are gathered in a short pop-up
+//    before the draft is shown (see lib/noticeGaps.ts). Anything still not
+//    supplied is rendered gracefully — a clause simply drops out — rather than
+//    surfaced as a blank to fill. A notice never shows the user its own scaffolding.
+//  - The output is sanitised so a dispatched notice never carries em/en dashes,
+//    curly quotes or ellipses: they read as machine-set and out of place next to
+//    Times New Roman. This holds for our generated text and for anything the
+//    user pastes in while editing.
 // ---------------------------------------------------------------------------
 
-import type { CaseView } from './caseStore'
+import type { CaseView, DispatchMethod } from './caseStore'
 import { characterisations, groundListLabel, readGrounds } from './grounds'
 import { fmtDate, inr, noticeRef } from './caseStore'
-import type { EvidenceFile } from './types'
+import type { CommissionLevel, EvidenceFile } from './types'
 
 export const COMPLIANCE_DAYS = 30
+
+/** Interest claimed on the refund, per annum, from the transaction date. */
+export const INTEREST_RATE = 18
+
+/** Ceiling on the harassment component, by the forum the claim routes to. */
+const HARASSMENT_CAP: Record<CommissionLevel, number> = {
+  district: 80_000,
+  state: 125_000,
+  national: 175_000,
+}
+
+/**
+ * Non-pecuniary component of the compensation demand: 20% of the consideration
+ * paid, floored at Rs 20,000 and capped by forum. Consequential loss is claimed
+ * separately and is not part of this figure.
+ */
+export function harassmentAmount(claim: number, level: CommissionLevel): number {
+  return Math.min(Math.max(Math.round(claim * 0.2), 20_000), HARASSMENT_CAP[level])
+}
+
+/** Name in which the notice is transmitted on the complainant's behalf. */
+export const PLATFORM_NAME = 'ConsumerX'
+
+/**
+ * Strips characters that mark text as machine-written from a dispatched Indian
+ * legal notice: em/en dashes, curly quotes and the ellipsis glyph. Applied to
+ * every block, so neither our own drafting nor a passage the user pastes from a
+ * word processor can carry one into the .docx, the email or the clipboard copy.
+ */
+export function sanitizeNoticeText(s: string): string {
+  return s
+    .replace(/…/g, '...')
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/\s*—\s*/g, ', ') // em dash reads as a comma
+    .replace(/\s*–\s*/g, '-') // en dash reads as a hyphen
+    .replace(/ /g, ' ') // non-breaking space
+    .replace(/ +,/g, ',')
+    .replace(/,{2,}/g, ',')
+    .replace(/[ \t]{2,}/g, ' ')
+}
 
 export type BlockKind =
   | 'ref' // ref/date line
@@ -44,6 +90,7 @@ export type BlockKind =
   | 'signature'
   | 'annexure-title'
   | 'annexure'
+  | 'dispatch' // transmitted-by footer
 
 export interface NoticeBlock {
   id: string
@@ -159,12 +206,22 @@ function renumber(blocks: NoticeBlock[]): void {
   }
 }
 
+/** Full postal address of the complainant, as it appears in the notice. */
+function complainantAddress(c: CaseView): string {
+  return [c.intake.addressLine, c.intake.city, c.intake.state, c.intake.pincode]
+    .map((s) => (s ?? '').trim())
+    .filter(Boolean)
+    .join(', ')
+}
+
 function commissionName(c: CaseView): string {
   switch (c.routing.commission) {
     case 'district':
       return `District Consumer Disputes Redressal Commission${c.intake.city ? `, ${c.intake.city}` : ''}`
     case 'state':
-      return `State Consumer Disputes Redressal Commission, ${c.intake.state || '[STATE]'}`
+      return c.intake.state
+        ? `State Consumer Disputes Redressal Commission, ${c.intake.state}`
+        : 'the State Consumer Disputes Redressal Commission having jurisdiction'
     default:
       return 'National Consumer Disputes Redressal Commission, New Delhi'
   }
@@ -179,11 +236,22 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
   const claim = c.intake.claimAmount ?? 0
   const cons = c.intake.consequentialLoss ?? 0
   const total = claim + cons
-  const company = c.intake.companyName || '[NAME OF THE COMPANY / OPPOSITE PARTY]'
+  const company = c.intake.companyName
   const noticeDate = c.notice?.sentAt ?? new Date().toISOString()
   const isGoods = grounds.some((g) =>
     ['defective_goods', 'spurious_goods', 'hazardous_goods', 'overcharging'].includes(g),
   )
+
+  // Notice-specifics gathered after intake (lib/noticeGaps.ts). Each is rendered
+  // gracefully when blank: a clause drops out rather than showing a placeholder.
+  const item = (c.intake.itemDescription ?? '').trim()
+  const itemLabel = item || (isGoods ? 'the goods supplied to me' : 'the service rendered to me')
+  const itemInFacts = item || (isGoods ? 'the goods in question' : 'the service in question')
+  const invoiceNo = (c.intake.invoiceNo ?? '').trim()
+  const paymentMode = (c.intake.paymentMode ?? '').trim()
+  const representations = (c.intake.representations ?? '').replace(/[\s.]+$/, '').trim()
+  const grievanceMode = (c.intake.grievanceMode ?? '').trim()
+  const grievanceRef = (c.intake.grievanceRef ?? '').trim()
 
   const blocks: NoticeBlock[] = []
   const push = (b: Omit<NoticeBlock, 'needsInput'>) => {
@@ -191,7 +259,7 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     // An edit cleared to empty means the user deleted this block — omit it
     // entirely, so it also drops out of the text, email and .docx outputs.
     if (edited !== undefined && edited.trim() === '') return
-    const text = edited ?? b.text
+    const text = sanitizeNoticeText(edited ?? b.text)
     blocks.push({ ...b, text, needsInput: PLACEHOLDER.test(text) })
   }
 
@@ -210,7 +278,9 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
   push({
     id: 'mode',
     kind: 'mode',
-    text: 'BY REGISTERED POST WITH A.D. / BY EMAIL',
+    text: c.intake.companyEmail
+      ? 'BY REGISTERED POST WITH ACKNOWLEDGEMENT DUE AND BY EMAIL'
+      : 'BY REGISTERED POST WITH ACKNOWLEDGEMENT DUE',
   })
 
   push({
@@ -220,9 +290,12 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
       'To,',
       'The Managing Director / The Authorised Signatory,',
       company,
-      c.intake.companyAddress || '[REGISTERED OFFICE ADDRESS]',
-      c.intake.companyEmail ? c.intake.companyEmail : '[EMAIL ADDRESS OF THE OPPOSITE PARTY]',
-    ].join('\n'),
+      c.intake.companyAddress,
+      c.intake.companyEmail,
+    ]
+      .map((s) => (s ?? '').trim())
+      .filter(Boolean)
+      .join('\n'),
     hint: 'Address the registered office. For an online purchase, consider adding the seller and the platform as separate addressees; for manufactured goods, the seller and the manufacturer.',
   })
 
@@ -236,12 +309,12 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     : `refund the sum of ${inr(claim)} and/or rectify the deficiency in service`
   const subject = `Legal notice calling upon you to ${reliefWord}${
     cons > 0 ? `, and to pay compensation of ${inr(cons)},` : ''
-  } on account of ${groundListLabel(grounds)} in respect of [BRIEF DESCRIPTION OF THE GOODS OR SERVICE], failing which appropriate legal proceedings shall be initiated against you, entirely at your risk as to costs and consequences.`
+  } on account of ${groundListLabel(grounds)} in respect of ${itemLabel}, failing which appropriate legal proceedings shall be initiated against you, entirely at your risk as to costs and consequences.`
   push({
     id: 'subject',
     kind: 'subject',
     text: subject,
-    hint: 'Name the goods or service in a few words — e.g. "one automatic washing machine, Model XYZ".',
+    hint: 'Name the goods or service in a few words, for example "one automatic washing machine, Model XYZ".',
   })
 
   push({ id: 'salutation', kind: 'salutation', text: 'Sir/Madam,' })
@@ -252,10 +325,10 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     id: 'p1',
     kind: 'para',
     label: '1.',
-    text: `I, ${c.intake.fullName || '[FULL NAME]'}, resident of ${
-      [c.intake.city, c.intake.state].filter(Boolean).join(', ') || '[FULL ADDRESS]'
+    text: `I, ${c.intake.fullName}${
+      complainantAddress(c) ? `, resident of ${complainantAddress(c)}` : ''
     }, the complainant herein, do hereby serve upon you this legal notice as follows:`,
-    hint: 'The Act permits self-representation. If an advocate is issuing this on your behalf, replace with the "Under instructions from and on behalf of my client…" form and use the advocate signature block.',
+    hint: 'The Act permits self-representation. This notice is issued by you in your own name.',
   })
 
   /* --- 2. Consumer status ------------------------------------------------ */
@@ -284,23 +357,37 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
 
   const facts: string[] = []
   facts.push(
-    `On ${
-      c.intake.transactionDate ? fmtDate(c.intake.transactionDate) : '[DATE OF TRANSACTION]'
-    }, I ${isGoods ? 'purchased' : 'availed of'} ${
-      isGoods ? '[DESCRIPTION OF THE GOODS]' : '[DESCRIPTION OF THE SERVICE]'
-    } from you vide [INVOICE / ORDER / BOOKING No.] for a total consideration of ${inr(
-      claim,
-    )}, paid through [MODE OF PAYMENT].`,
+    `That on ${fmtDate(c.intake.transactionDate)}, I ${
+      isGoods ? 'purchased' : 'availed of'
+    } ${itemInFacts} from you${
+      invoiceNo ? ` vide ${invoiceNo}` : ''
+    } for a total consideration of ${inr(claim)}${
+      paymentMode ? `, paid through ${paymentMode}` : ''
+    }.`,
   )
+  // Representations are a limb of the claim, so this sentence always appears:
+  // the complainant's own words where given, otherwise a generic assurance that
+  // keeps the later "representations aforesaid" reference sound.
+  const repText =
+    representations ||
+    (isGoods
+      ? 'the goods supplied would be of the standard, quality and description agreed and would be fit for the purpose for which they were purchased'
+      : 'the service would be rendered with due care and skill and would conform to the standard and quality agreed')
   facts.push(
-    'At the time of the said transaction, you represented and assured me that [SET OUT THE REPRESENTATIONS, WARRANTIES OR SERVICE STANDARDS PROMISED].',
+    `That at the time of the said transaction, you represented and assured me that ${repText}.`,
   )
 
   const narrativeFacts = splitNarrative(c.intake.narrative ?? '', 5)
   if (narrativeFacts.length > 0) {
     facts.push(...narrativeFacts)
   } else {
-    facts.push('[SET OUT WHAT ACTUALLY HAPPENED — the defect or deficiency, with dates.]')
+    facts.push(
+      `That the ${
+        isGoods
+          ? 'goods so supplied were found to be defective'
+          : 'service so rendered was found to be deficient'
+      } and did not conform to the representations and standards aforesaid.`,
+    )
   }
 
   facts.forEach((text, i) => {
@@ -312,7 +399,7 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
       text,
       hint:
         i >= 2
-          ? 'Taken from your own account. Keep it factual and dated — specificity is what makes a notice strong; overstatement weakens it.'
+          ? 'Taken from your own account. Keep it factual and dated. Specificity is what makes a notice strong; overstatement weakens it.'
           : undefined,
     })
   })
@@ -324,13 +411,13 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     id: 'p4',
     kind: 'para',
     label: '4.',
-    text: `That on becoming aware of the aforesaid, I promptly took up the matter with you. On ${
-      c.intake.incidentDate ? fmtDate(c.intake.incidentDate) : '[DATE(S)]'
-    }, I ${
-      hasCorrespondence
-        ? 'wrote to you and raised a grievance seeking redressal'
-        : '[wrote to you / lodged complaint No. ___ / called your customer care] seeking redressal'
-    }. Despite the said communication(s), you have failed and neglected to redress the grievance, and the resolution promised was never provided, thereby compelling me to issue the present notice.`,
+    text: `That on becoming aware of the aforesaid, I promptly took up the matter with you. On ${fmtDate(
+      c.intake.incidentDate,
+    )}, I ${grievanceMode || 'took up the matter with you'}${
+      grievanceRef ? `, bearing reference ${grievanceRef},` : ''
+    } seeking redressal.${
+      hasCorrespondence ? ' The said communication is annexed hereto.' : ''
+    } Despite the said communication, you have failed and neglected to redress the grievance, and the resolution promised was never provided, thereby compelling me to issue the present notice.`,
   })
 
   /* --- 5. Statutory characterisation (all pleaded grounds) --------------- */
@@ -374,26 +461,25 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     text: `I, therefore, hereby call upon you to, within ${COMPLIANCE_DAYS} days of the receipt of this notice:`,
   })
 
+  const harassment = harassmentAmount(claim, c.routing.commission)
+  const compensation = cons + harassment
+
   const demands: string[] = [
-    `Refund the sum of ${inr(claim)} together with interest at [__]% per annum from ${
-      c.intake.transactionDate ? fmtDate(c.intake.transactionDate) : '[DATE]'
-    } till realisation; and/or`,
+    `Refund the sum of ${inr(claim)} together with interest thereon at ${INTEREST_RATE}% per annum from ${fmtDate(
+      c.intake.transactionDate,
+    )} till the date of realisation; and/or`,
     isGoods
       ? 'Replace the defective goods with goods conforming to the standard represented and warranted; and'
       : 'Rectify and make good the deficiency in service, and render the service as originally promised; and',
+    `Pay a sum of ${inr(compensation)} towards compensation${
+      cons > 0
+        ? `, being ${inr(cons)} towards consequential loss and ${inr(
+            harassment,
+          )} towards the harassment, inconvenience and mental agony suffered by me`
+        : ' for the harassment, inconvenience and mental agony suffered by me'
+    }; and`,
+    'Pay the costs of and incidental to this notice, as may be assessed by the Commission.',
   ]
-  if (cons > 0) {
-    demands.push(
-      `Pay a sum of ${inr(
-        cons,
-      )} towards compensation for the loss, harassment, inconvenience and mental agony suffered by me; and`,
-    )
-  } else {
-    demands.push(
-      'Pay a sum of [AMOUNT] towards compensation for the loss, harassment, inconvenience and mental agony suffered by me; and',
-    )
-  }
-  demands.push('Pay a sum of [AMOUNT] towards the costs of and incidental to this notice.')
 
   demands.forEach((text, i) => {
     push({ id: `p7-${i}`, kind: 'sub', numStyle: 'letter', label: `(${LETTERS[i]})`, text })
@@ -424,25 +510,38 @@ export function buildNotice(c: CaseView, edits: Record<string, string> = {}): No
     text: 'A copy of this notice is retained for future reference and production, if required.',
   })
 
+  const signatureLines = [
+    c.intake.fullName,
+    'Complainant',
+    complainantAddress(c),
+    c.intake.phone,
+    c.intake.email,
+  ]
+    .map((s) => (s ?? '').trim())
+    .filter(Boolean)
   push({
     id: 'signature',
     kind: 'signature',
-    text: [
-      'Yours faithfully,',
-      '',
-      '',
-      c.intake.fullName || '[NAME OF THE COMPLAINANT]',
-      [c.intake.city, c.intake.state].filter(Boolean).join(', ') || '[ADDRESS]',
-      [c.intake.phone, c.intake.email].filter(Boolean).join(' · ') || '[CONTACT]',
-    ].join('\n'),
-    hint: 'Sign above your name before dispatch. If an advocate is issuing this, substitute their name, enrolment number and office address.',
+    text: ['Yours faithfully,', '', '', ...signatureLines].join('\n'),
+    hint: 'Sign above your name before dispatch. This notice is issued by you in person and in your own name.',
+  })
+
+  push({
+    id: 'dispatch',
+    kind: 'dispatch',
+    text: `Transmitted by ${PLATFORM_NAME} on behalf of and under the instructions of the complainant named above. ${PLATFORM_NAME} is an online consumer grievance platform and does not act as an advocate or pleader. The contents of this notice are those of the complainant, and the notice is issued and signed by the complainant in person under the Consumer Protection Act, 2019.`,
+    hint: 'This line records that Consumer X transmitted the notice on your behalf. It does not change the fact that the notice is issued and signed by you.',
   })
 
   /* --- Annexures --------------------------------------------------------- */
 
   const annexures = annexureList(c.intake.evidence ?? [])
   if (annexures.length > 0) {
-    push({ id: 'ann-title', kind: 'annexure-title', text: 'LIST OF ANNEXURES' })
+    push({
+      id: 'ann-title',
+      kind: 'annexure-title',
+      text: 'SCHEDULE OF ANNEXURES (annexed hereto and relied upon)',
+    })
     annexures.forEach((a, i) => {
       push({ id: `ann-${i}`, kind: 'annexure', label: `Annexure ${i + 1}:`, text: a })
     })
@@ -489,6 +588,9 @@ export function noticeToText(doc: NoticeDoc): string {
       case 'signature':
         out.push('', b.text)
         break
+      case 'dispatch':
+        out.push('', '---', b.text)
+        break
       default:
         out.push(b.text)
     }
@@ -513,20 +615,36 @@ export interface EmailDraft {
   mailto: string
 }
 
-export function buildEmailDraft(c: CaseView, doc: NoticeDoc): EmailDraft {
+export function buildEmailDraft(
+  c: CaseView,
+  doc: NoticeDoc,
+  methods: DispatchMethod[] = [],
+): EmailDraft {
   const to = doc.recipientEmail ?? ''
-  const subject = `Legal Notice under the Consumer Protection Act, 2019 — ${doc.ref} — ${
-    c.intake.fullName || 'Complainant'
-  } v. ${c.intake.companyName || 'Opposite Party'}`
+  const subject = sanitizeNoticeText(
+    `Legal Notice under the Consumer Protection Act, 2019, Ref. ${doc.ref}, ${
+      c.intake.fullName || 'Complainant'
+    } v. ${c.intake.companyName || 'Opposite Party'}`,
+  )
+
+  // Only state a physical-dispatch mode that is actually being used — asserting
+  // Registered Post when the complainant sent email only would be a false
+  // statement of fact inside a legal notice.
+  const physicalDispatch = methods.includes('registered_post')
+    ? 'A copy of this notice is also being dispatched to you by Registered Post with Acknowledgement Due.'
+    : methods.includes('courier')
+      ? 'A copy of this notice is also being dispatched to you by courier.'
+      : null
 
   const body = [
     'Dear Sir/Madam,',
     '',
-    `Please find enclosed a legal notice under the Consumer Protection Act, 2019, bearing reference ${doc.ref}, issued in respect of the matter set out therein.`,
+    `I am enclosing herewith a legal notice under the Consumer Protection Act, 2019, bearing reference ${doc.ref}, in respect of the matter set out therein.`,
     '',
-    `You are called upon to comply with the demands set out in the notice within ${COMPLIANCE_DAYS} days of receipt. A copy is also being dispatched by Registered Post with Acknowledgement Due.`,
+    `You are called upon to comply with the demands set out in the notice within ${COMPLIANCE_DAYS} days of receipt.`,
+    ...(physicalDispatch ? ['', physicalDispatch] : []),
     '',
-    'The full text of the notice follows for your immediate reference.',
+    'The full text of the notice follows for your immediate reference. Kindly acknowledge receipt of this notice by return email.',
     '',
     '---',
     '',

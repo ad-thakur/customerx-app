@@ -13,7 +13,7 @@ import {
   readGrounds,
   toView,
 } from './caseLogic.js'
-import { generateAiAssessment } from './ai.js'
+import { fillNoticeGaps, generateAiAssessment, rewordNoticeText } from './ai.js'
 import { initPrecedentTable, searchLocalPrecedents } from './precedentStore.js'
 import { initNewsTable, listPublished, listDrafts, setStatus } from './newsStore.js'
 import { categoriesForGrounds, isGroundId } from './categories.js'
@@ -28,17 +28,31 @@ import {
   sendLoginEmail,
   userForSession,
 } from './auth.js'
+import { aiEnabled, aiStatus } from './aiSwitch.js'
+import { brandRouter } from './brandRoutes.js'
+import { initBrandTables } from './brandStore.js'
+import { socialRouter } from './socialRoutes.js'
+import { initSocialTables } from './social.js'
 import type { CaseRecord, DispatchMethod, IntakeData, RoutingResult } from './types.js'
 
 const app = express()
 app.use(express.json({ limit: '1mb' }))
 
+// Complaint intake is posted from brands' own websites, so it accepts any
+// origin. Registered before the app-wide CORS rule so it also answers the
+// preflight; it only exposes the intake routes.
+app.use('/api/intake', cors({ origin: true }))
+
 // CORS: set FRONTEND_ORIGIN to your Vercel URL (comma-separated for several).
 const origins = (process.env.FRONTEND_ORIGIN ?? '*').split(',').map((s) => s.trim())
 app.use(cors({ origin: origins.includes('*') ? true : origins }))
 
+// Brand dashboard, complaint intake and consumer tracking links.
+app.use(brandRouter)
+app.use(socialRouter)
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, ai: Boolean(process.env.ANTHROPIC_API_KEY) })
+  res.json({ ok: true, ai: aiEnabled(), aiStatus: aiStatus() })
 })
 
 // ---------------------------------------------------------------------------
@@ -131,7 +145,11 @@ app.post('/api/auth/request-link', async (req, res) => {
     }
     const token = await issueLoginToken(email)
     const base = (process.env.FRONTEND_ORIGIN ?? '').split(',')[0].trim() || 'http://localhost:5173'
-    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`
+    // Optional same-site path to land on after sign-in (e.g. /brand). Only a
+    // plain path is accepted, never another origin.
+    const next = String((req.body as { next?: string }).next ?? '')
+    const nextParam = /^\/[A-Za-z0-9/_-]*$/.test(next) ? `&next=${encodeURIComponent(next)}` : ''
+    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}${nextParam}`
     const sent = await sendLoginEmail(email, link)
     // Report delivery failure honestly rather than showing "check your email"
     // for a message that was never sent. This says nothing about whether the
@@ -265,13 +283,19 @@ app.post('/api/cases/:id/pay', async (req, res) => {
 
     const rules = buildRulesAssessment(record)
 
-    // Retrieve precedents on the statutory grounds only (never the narrative
-    // verbatim to a third party), then let the AI layer rank/annotate them.
+    // Retrieve precedents for the statutory grounds, ranked closest-first by the
+    // case's own product/service. The narrative is used only to rank against the
+    // LOCAL corpus (precedent_cases) — it is never sent to a third-party
+    // precedent source. Categories keep results on-ground; the narrative orders
+    // them so the nearest product/service comes first. The AI layer then
+    // annotates them.
     let precedents: Awaited<ReturnType<typeof localPrecedentResults>> = []
     try {
       const grounds = readGrounds(record.intake)
+      const subject = (record.intake.narrative ?? '').trim()
+      const groundWords = grounds.map((g) => GROUND_LABELS[g]).join(' ')
       precedents = await localPrecedentResults(
-        grounds.map((g) => GROUND_LABELS[g]).join(' '),
+        subject ? `${subject} ${groundWords}` : groundWords,
         categoriesForGrounds(grounds),
       )
     } catch {
@@ -317,6 +341,112 @@ app.put('/api/cases/:id/notice-draft', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Could not save your changes' })
+  }
+})
+
+// The notice-specifics gathered in the pop-up after intake (the exact goods,
+// invoice number, mode of payment, representations, how the grievance was
+// raised, the parties' addresses). Only these fields may be patched, and only
+// while the notice is still a draft — a dispatched notice is fixed.
+const GAP_FIELDS = [
+  'itemDescription',
+  'invoiceNo',
+  'paymentMode',
+  'representations',
+  'grievanceMode',
+  'grievanceRef',
+  'addressLine',
+  'pincode',
+  'city',
+  'state',
+  'companyAddress',
+  'companyEmail',
+] as const
+
+app.put('/api/cases/:id/intake', async (req, res) => {
+  try {
+    const record = await authedCase(req, res)
+    if (!record) return
+    if (record.notice) {
+      res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
+      return
+    }
+    const raw = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, string> = {}
+    for (const key of GAP_FIELDS) {
+      const v = raw[key]
+      if (typeof v === 'string') patch[key] = v.slice(0, 2000)
+    }
+    const intake = { ...record.intake, ...patch }
+    const updated = await patchCase(record.id, { intake: stripEvidenceData(intake) })
+    res.json(toView(updated!))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not save your details' })
+  }
+})
+
+// AI drafting help for the notice — both are advisory only. The endpoints
+// return suggestions the frontend shows for the user to accept or discard;
+// nothing here writes to the notice. While AI is switched off they answer
+// { aiDisabled: true } and the frontend hides the buttons. Refused once the
+// notice is dispatched (the document is then fixed).
+app.post('/api/cases/:id/notice/ai-fill', async (req, res) => {
+  try {
+    const record = await authedCase(req, res)
+    if (!record) return
+    if (record.notice) {
+      res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
+      return
+    }
+    if (!aiEnabled()) {
+      res.json({ aiDisabled: true, suggestions: [] })
+      return
+    }
+    const raw = (req.body as { blocks?: unknown }).blocks
+    const blocks = (Array.isArray(raw) ? raw : [])
+      .filter((b): b is { id: string; text: string; hint?: string } =>
+        Boolean(b) && typeof (b as { id?: unknown }).id === 'string' &&
+        typeof (b as { text?: unknown }).text === 'string',
+      )
+      .slice(0, 40)
+      .map((b) => ({
+        id: b.id.slice(0, 64),
+        text: b.text.slice(0, 8000),
+        hint: typeof b.hint === 'string' ? b.hint.slice(0, 500) : undefined,
+      }))
+    const suggestions = await fillNoticeGaps(record, blocks)
+    res.json({ suggestions })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not draft suggestions just now' })
+  }
+})
+
+app.post('/api/cases/:id/notice/ai-reword', async (req, res) => {
+  try {
+    const record = await authedCase(req, res)
+    if (!record) return
+    if (record.notice) {
+      res.status(409).json({ error: 'This notice has already been dispatched and is now fixed' })
+      return
+    }
+    if (!aiEnabled()) {
+      res.json({ aiDisabled: true, variants: [] })
+      return
+    }
+    const body = req.body as { text?: unknown; instruction?: unknown }
+    const text = typeof body.text === 'string' ? body.text.slice(0, 4000) : ''
+    if (!text.trim()) {
+      res.status(400).json({ error: 'Nothing to reword' })
+      return
+    }
+    const instruction = typeof body.instruction === 'string' ? body.instruction : undefined
+    const variants = await rewordNoticeText(record, text, instruction)
+    res.json({ variants })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not reword that just now' })
   }
 })
 
@@ -438,7 +568,8 @@ async function localPrecedentResults(query: string, categories: string[] | null 
     return {
       title: `${r.caseNumber} — ${r.complainant ?? 'Complainant'} v. ${r.respondent ?? 'Respondent'}`,
       docUrl: `https://e-jagriti.gov.in/judgement#${encodeURIComponent(r.caseNumber)}`,
-      court: ['NCDRC', r.outcome, date].filter(Boolean).join(' · '),
+      // The corpus now spans NCDRC, State and District Commissions.
+      court: [r.commission, r.outcome, date].filter(Boolean).join(' · '),
       snippet: r.snippet.replace(/<\/?b>/g, ''),
     }
   })
@@ -529,10 +660,12 @@ initDb()
   .then(() => initPrecedentTable())
   .then(() => initNewsTable())
   .then(() => initAuthTables())
+  .then(() => initBrandTables())
+  .then(() => initSocialTables())
   .then(() => {
     app.listen(port, () => {
       console.log(`Consumer X API listening on :${port}`)
-      console.log(`AI assessment layer: ${process.env.ANTHROPIC_API_KEY ? 'enabled' : 'disabled (no ANTHROPIC_API_KEY)'}`)
+      console.log(`AI layer: ${aiStatus()} (set AI_ENABLED=true with an ANTHROPIC_API_KEY to turn it on)`)
     })
   })
   .catch((err) => {

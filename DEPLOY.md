@@ -36,6 +36,8 @@ git push origin main    # create a GitHub repo first if you haven't
 4. Still under **Variables**, add:
    - `ANTHROPIC_API_KEY` = your key from [console.anthropic.com](https://console.anthropic.com)
      (skip it and the assessment ships rules-only — everything else still works)
+   - `AI_ENABLED` = `true` to actually turn AI on. **AI is off unless this is
+     set**, even with a key present — leave it unset until launch.
    - `FRONTEND_ORIGIN` = `*` for now; tighten to your Vercel URL after step 2.
      **This is also the base URL used to build sign-in links**, so it must be
      your real frontend URL before anyone tries to sign in.
@@ -48,7 +50,8 @@ git push origin main    # create a GitHub repo first if you haven't
 5. **Settings → Networking → Generate Domain**. Copy the URL, e.g.
    `https://consumerx-production-xxxx.up.railway.app`.
 6. Sanity check: open `<railway-url>/api/health` — you should see
-   `{"ok":true,"ai":true}` (`"ai":false` means no Anthropic key set).
+   `{"ok":true,"ai":false,"aiStatus":"switched_off"}` until you set
+   `AI_ENABLED=true`; `"no_key"` means no Anthropic key is set.
 
 ## 2. Vercel — frontend (~3 minutes)
 

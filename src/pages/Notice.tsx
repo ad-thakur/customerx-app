@@ -4,11 +4,16 @@ import {
   getCaseView,
   recordNoticeDispatch,
   saveNoticeDraft,
+  saveIntakeGaps,
+  aiFillNotice,
+  aiRewordNotice,
+  getApiHealth,
   fmtDate,
   MILESTONES,
   DISPATCH_LABELS,
   type CaseView,
   type DispatchMethod,
+  type NoticeFillSuggestion,
 } from '../lib/caseStore'
 import {
   buildNotice,
@@ -18,6 +23,8 @@ import {
   COMPLIANCE_DAYS,
   type NoticeBlock,
 } from '../lib/noticeDraft'
+import { pendingGaps, type GapQuestion } from '../lib/noticeGaps'
+import type { IntakeData } from '../lib/types'
 import { downloadNoticeDocx, noticeFilename } from '../lib/noticeDocx'
 import { useAuth } from '../lib/AuthContext'
 import { claimLocalCases } from '../lib/auth'
@@ -39,6 +46,7 @@ const BLOCK_CLASS: Record<NoticeBlock['kind'], string> = {
   signature: 'mt-10 whitespace-pre-line',
   'annexure-title': 'mt-10 font-semibold tracking-wide',
   annexure: 'mt-2 pl-6 -indent-6',
+  dispatch: 'mt-10 pt-4 border-t border-line text-sm text-ink-soft italic text-justify',
 }
 
 /**
@@ -72,8 +80,33 @@ export default function Notice() {
   const [methods, setMethods] = useState<DispatchMethod[]>([])
   const [postId, setPostId] = useState('')
   const [recording, setRecording] = useState(false)
+
+  // Post-intake pop-up: the notice-specifics the intake form doesn't ask for.
+  const [gapOpen, setGapOpen] = useState(false)
+  const [gapDraft, setGapDraft] = useState<Record<string, string>>({})
+  const [savingGaps, setSavingGaps] = useState(false)
+  const [gapError, setGapError] = useState<string | null>(null)
+  const [gapDismissed, setGapDismissed] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { user, loading: authLoading } = useAuth()
+
+  // AI drafting assistance (only shown when the server has a model configured).
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [filling, setFilling] = useState(false)
+  const [fillSuggestions, setFillSuggestions] = useState<NoticeFillSuggestion[] | null>(null)
+  const [fillError, setFillError] = useState<string | null>(null)
+  // Reword, scoped to the block currently being edited.
+  const editRef = useRef<HTMLTextAreaElement | null>(null)
+  const [rewording, setRewording] = useState(false)
+  const [rewordVariants, setRewordVariants] = useState<string[] | null>(null)
+  const [rewordRange, setRewordRange] = useState<{ start: number; end: number } | null>(null)
+  const [rewordError, setRewordError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getApiHealth()
+      .then((h) => setAiEnabled(Boolean(h.ai)))
+      .catch(() => setAiEnabled(false))
+  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -88,6 +121,52 @@ export default function Notice() {
 
   const doc = useMemo(() => (record ? buildNotice(record, edits) : null), [record, edits])
   const sent = Boolean(record?.notice)
+
+  // Details the notice can still use that intake didn't capture, for this case.
+  const gapQuestions = useMemo<GapQuestion[]>(
+    () => (record && !sent ? pendingGaps(record.intake) : []),
+    [record, sent],
+  )
+  const requiredGaps = gapQuestions.filter((q) => !q.optional)
+
+  // Open the pop-up automatically the first time a draft has required gaps, so
+  // the specifics are gathered before the user reads a vaguer draft. Skipping it
+  // is always allowed — the draft renders every field gracefully when blank.
+  useEffect(() => {
+    if (!sent && !gapDismissed && requiredGaps.length > 0) setGapOpen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record?.id, sent, gapDismissed, requiredGaps.length])
+
+  const saveGaps = () => {
+    if (!record) return
+    const patch: Partial<IntakeData> = {}
+    for (const q of gapQuestions) {
+      const v = (gapDraft[q.field] ?? '').trim()
+      if (v) (patch as Record<string, string>)[q.field] = v
+    }
+    setSavingGaps(true)
+    setGapError(null)
+    saveIntakeGaps(record.id, patch)
+      .then((v) => {
+        setRecord(v)
+        setGapOpen(false)
+        setGapDraft({})
+      })
+      .catch((e: Error) => setGapError(e.message))
+      .finally(() => setSavingGaps(false))
+  }
+
+  const skipGaps = () => {
+    setGapDismissed(true)
+    setGapOpen(false)
+  }
+
+  // A reword suggestion belongs to one block; drop it when the user moves on.
+  useEffect(() => {
+    setRewordVariants(null)
+    setRewordRange(null)
+    setRewordError(null)
+  }, [editingId])
 
   /** Debounced autosave — a legal draft should never be lost to a stray reload. */
   const editBlock = (blockId: string, text: string) => {
@@ -119,6 +198,93 @@ export default function Notice() {
     saveNoticeDraft(record.id, {})
       .then(() => setSaveState('saved'))
       .catch(() => setSaveState('error'))
+  }
+
+  /* --- AI: fill the bracketed gaps from the client's own inputs ----------- */
+
+  const runAiFill = () => {
+    if (!record || !doc) return
+    // Send only the editable, still-incomplete blocks; the address/signature
+    // carry gaps (office address, contact) the AI can partly ground from intake.
+    const blocks = doc.blocks
+      .filter((b) => b.needsInput && b.kind !== 'ref' && b.kind !== 'marking')
+      .map((b) => ({ id: b.id, text: b.text, hint: b.hint }))
+    if (blocks.length === 0) return
+    setFilling(true)
+    setFillError(null)
+    setFillSuggestions(null)
+    aiFillNotice(record.id, blocks)
+      .then((r) => {
+        if (r.aiDisabled) {
+          setAiEnabled(false)
+          return
+        }
+        setFillSuggestions(r.suggestions)
+      })
+      .catch((e: Error) => setFillError(e.message))
+      .finally(() => setFilling(false))
+  }
+
+  const acceptFill = (s: NoticeFillSuggestion) => {
+    editBlock(s.id, s.text)
+    setFillSuggestions((prev) => prev?.filter((x) => x.id !== s.id) ?? null)
+  }
+
+  const acceptAllFills = () => {
+    if (!record || !fillSuggestions) return
+    const next = { ...edits }
+    for (const s of fillSuggestions) next[s.id] = s.text
+    setEdits(next)
+    setSaveState('saving')
+    saveNoticeDraft(record.id, next)
+      .then(() => setSaveState('saved'))
+      .catch(() => setSaveState('error'))
+    setFillSuggestions(null)
+  }
+
+  /* --- AI: reword the current selection (or whole block) ------------------- */
+
+  const runReword = (block: NoticeBlock) => {
+    if (!record) return
+    const el = editRef.current
+    const start = el ? el.selectionStart : 0
+    const end = el ? el.selectionEnd : block.text.length
+    const hasSelection = end > start
+    const range = hasSelection ? { start, end } : { start: 0, end: block.text.length }
+    const passage = block.text.slice(range.start, range.end)
+    if (!passage.trim()) return
+    setRewordRange(range)
+    setRewordVariants(null)
+    setRewordError(null)
+    setRewording(true)
+    aiRewordNotice(record.id, passage)
+      .then((r) => {
+        if (r.aiDisabled) {
+          setAiEnabled(false)
+          return
+        }
+        if (r.variants.length === 0) {
+          setRewordError('No alternative wording came back — try selecting a full sentence.')
+          return
+        }
+        setRewordVariants(r.variants)
+      })
+      .catch((e: Error) => setRewordError(e.message))
+      .finally(() => setRewording(false))
+  }
+
+  const acceptReword = (block: NoticeBlock, variant: string) => {
+    const r = rewordRange ?? { start: 0, end: block.text.length }
+    const next = block.text.slice(0, r.start) + variant + block.text.slice(r.end)
+    editBlock(block.id, next)
+    setRewordVariants(null)
+    setRewordRange(null)
+  }
+
+  const dismissReword = () => {
+    setRewordVariants(null)
+    setRewordRange(null)
+    setRewordError(null)
   }
 
   const copy = (text: string, which: 'text' | 'body') => {
@@ -162,14 +328,97 @@ export default function Notice() {
     )
   }
 
-  const email = buildEmailDraft(record, doc)
+  const email = buildEmailDraft(record, doc, methods)
   const gaps = outstandingPlaceholders(doc)
   const dueDate = record.notice
     ? fmtDate(new Date(new Date(record.notice.sentAt).getTime() + MILESTONES.windowCloses * 86400000))
     : ''
 
+  const gapReady = requiredGaps.every((q) => (gapDraft[q.field] ?? '').trim() !== '')
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-14">
+      {/* ---------------------------------------------------------------- */}
+      {/* Post-intake specifics pop-up                                      */}
+      {/* ---------------------------------------------------------------- */}
+      {!sent && gapOpen && (
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-ink/40 p-4 overflow-y-auto">
+          <div className="bg-paper rounded-xl border border-line shadow-xl max-w-lg w-full my-8">
+            <div className="p-6 md:p-8">
+              <p className="case-number text-seal text-xs mb-2">A FEW SPECIFICS</p>
+              <h2 className="font-display text-2xl text-ink mb-2">Let's make your notice specific</h2>
+              <p className="text-ink-soft text-sm mb-6 leading-relaxed">
+                A notice that names the exact goods, the invoice and what you were promised is far
+                harder to ignore. These go straight into your draft, and you can edit anything
+                afterwards.
+              </p>
+              <div className="space-y-5">
+                {gapQuestions.map((q) => {
+                  const value = gapDraft[q.field] ?? ''
+                  const set = (v: string) => setGapDraft((prev) => ({ ...prev, [q.field]: v }))
+                  return (
+                    <div key={`${String(q.field)}-${q.label}`}>
+                      <label className="block text-sm font-medium text-ink mb-1.5">
+                        {q.label}
+                        {q.optional && <span className="text-ink-soft font-normal"> (optional)</span>}
+                      </label>
+                      {q.kind === 'select' ? (
+                        <select
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          className="w-full border border-line rounded-md px-4 py-2.5 bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/40"
+                        >
+                          <option value="">Select…</option>
+                          {q.options?.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      ) : q.kind === 'textarea' ? (
+                        <textarea
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          rows={3}
+                          placeholder={q.placeholder}
+                          className="w-full border border-line rounded-md px-4 py-2.5 bg-white text-ink placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-ink/40"
+                        />
+                      ) : (
+                        <input
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          placeholder={q.placeholder}
+                          className="w-full border border-line rounded-md px-4 py-2.5 bg-white text-ink placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-ink/40"
+                        />
+                      )}
+                      {q.help && <p className="text-xs text-ink-soft mt-1 leading-relaxed">{q.help}</p>}
+                    </div>
+                  )
+                })}
+              </div>
+              {gapError && <p className="text-sm text-seal mt-4">{gapError}</p>}
+              <div className="flex gap-4 flex-wrap items-center mt-7">
+                <button
+                  type="button"
+                  onClick={saveGaps}
+                  disabled={savingGaps || !gapReady}
+                  className="bg-ink text-paper rounded-full px-6 py-2.5 font-medium hover:bg-seal transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {savingGaps ? 'Saving…' : 'Add to my notice'}
+                </button>
+                <button
+                  type="button"
+                  onClick={skipGaps}
+                  className="text-sm text-ink-soft hover:text-ink transition-colors"
+                >
+                  Skip for now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---------------------------------------------------------------- */}
       {/* Header                                                            */}
       {/* ---------------------------------------------------------------- */}
@@ -230,6 +479,31 @@ export default function Notice() {
       )}
 
       {/* ---------------------------------------------------------------- */}
+      {/* Reopen the specifics pop-up                                        */}
+      {/* ---------------------------------------------------------------- */}
+      {!sent && !gapOpen && gapQuestions.length > 0 && (
+        <div className="border border-seal/40 bg-seal/5 rounded-lg p-5 mb-6 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-sm font-medium text-ink mb-1">Make this notice more specific</p>
+            <p className="text-sm text-ink-soft">
+              {gapQuestions.length === 1
+                ? 'There is 1 detail'
+                : `There are ${gapQuestions.length} details`}{' '}
+              we can still add — the exact goods, the invoice, what you were promised. A notice that
+              recites specifics is far harder to ignore.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGapOpen(true)}
+            className="bg-ink text-paper rounded-full px-5 py-2 text-sm font-medium hover:bg-seal transition-colors shrink-0"
+          >
+            Add details
+          </button>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
       {/* Outstanding placeholders                                          */}
       {/* ---------------------------------------------------------------- */}
       {!sent && gaps.length > 0 && (
@@ -242,6 +516,76 @@ export default function Notice() {
             intake — an invoice number, the exact goods, what you were promised. Click the
             paragraph to replace it. A notice that recites specifics is far harder to ignore.
           </p>
+          {aiEnabled && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={runAiFill}
+                disabled={filling}
+                className="bg-ink text-paper rounded-full px-5 py-2 text-sm font-medium hover:bg-seal transition-colors disabled:opacity-40"
+              >
+                {filling ? 'Drafting from your intake…' : '✨ Let AI fill the blanks from my details'}
+              </button>
+              <p className="text-xs text-ink-soft mt-2">
+                The AI only draws on the details you entered — it won't invent an invoice number or
+                a figure. Every suggestion is yours to accept or ignore.
+              </p>
+              {fillError && <p className="text-xs text-seal mt-2">{fillError}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI fill suggestions — review and accept, one at a time or all at once. */}
+      {!sent && fillSuggestions && (
+        <div className="border border-ink/20 bg-white/70 rounded-lg p-5 mb-6">
+          {fillSuggestions.length === 0 ? (
+            <p className="text-sm text-ink-soft">
+              The AI couldn't add anything it could ground in your details — those blanks need a
+              specific only you have. Click a highlighted paragraph to fill it in yourself.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                <p className="text-sm font-medium text-ink">
+                  {fillSuggestions.length} suggested{' '}
+                  {fillSuggestions.length === 1 ? 'fill' : 'fills'} — review before you accept
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={acceptAllFills}
+                    className="bg-ink text-paper rounded-full px-4 py-1.5 text-xs font-medium hover:bg-seal transition-colors"
+                  >
+                    Accept all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFillSuggestions(null)}
+                    className="text-xs text-ink-soft hover:text-ink"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {fillSuggestions.map((s) => (
+                  <div key={s.id} className="border border-line rounded-md bg-paper p-3">
+                    <p className="text-sm text-ink leading-relaxed mb-2">
+                      {withPlaceholders(s.text)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => acceptFill(s)}
+                      className="font-body text-xs bg-ink text-paper rounded-full px-4 py-1.5 font-medium hover:bg-seal transition-colors"
+                    >
+                      Accept
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -251,7 +595,8 @@ export default function Notice() {
       <div className="bg-white border border-line rounded-sm shadow-sm p-8 md:p-12 font-display text-ink leading-relaxed">
         {doc.blocks.map((b) => {
           const isEditing = editingId === b.id
-          const editable = !sent && b.kind !== 'ref' && b.kind !== 'marking'
+          const editable =
+            !sent && b.kind !== 'ref' && b.kind !== 'marking' && b.kind !== 'dispatch'
 
           if (isEditing) {
             return (
@@ -260,6 +605,7 @@ export default function Notice() {
                   <p className="font-body text-xs text-ink-soft mb-2 leading-relaxed">{b.hint}</p>
                 )}
                 <textarea
+                  ref={editRef}
                   autoFocus
                   value={b.text}
                   onChange={(e) => editBlock(b.id, e.target.value)}
@@ -267,13 +613,32 @@ export default function Notice() {
                   rows={Math.max(3, Math.ceil(b.text.length / 70) + b.text.split('\n').length)}
                   className="font-body w-full border border-ink rounded-md p-3 text-sm text-ink bg-paper focus:outline-none focus:ring-2 focus:ring-ink/30"
                 />
-                <div className="flex justify-between items-center mt-1.5">
+                <div className="flex justify-between items-center mt-1.5 gap-3 flex-wrap">
                   <span className="font-body text-xs text-ink-soft">
-                    {saveState === 'saving' && 'Saving…'}
-                    {saveState === 'saved' && 'Saved'}
-                    {saveState === 'error' && 'Could not save — your text is still here'}
+                    {rewording
+                      ? 'Rewording…'
+                      : saveState === 'saving'
+                        ? 'Saving…'
+                        : saveState === 'saved'
+                          ? 'Saved'
+                          : saveState === 'error'
+                            ? 'Could not save — your text is still here'
+                            : ''}
                   </span>
                   <div className="flex items-center gap-4">
+                    {aiEnabled && (
+                      // preventDefault on mousedown keeps the textarea focused so
+                      // its selection survives the click and we can reword it.
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => runReword(b)}
+                        disabled={rewording}
+                        className="font-body text-xs text-seal font-medium hover:underline disabled:opacity-40"
+                      >
+                        ✨ Reword with AI
+                      </button>
+                    )}
                     {(b.kind === 'para' ||
                       b.kind === 'sub' ||
                       b.kind === 'subject' ||
@@ -295,6 +660,46 @@ export default function Notice() {
                     </button>
                   </div>
                 </div>
+
+                {aiEnabled && (rewordError || rewordVariants) && (
+                  <div className="mt-3 border border-seal/40 bg-seal/5 rounded-md p-4">
+                    {rewordError ? (
+                      <p className="font-body text-xs text-ink-soft">{rewordError}</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-2 gap-3">
+                          <p className="font-body text-xs font-medium text-ink">
+                            Suggested rewording — accept to replace, or ignore
+                          </p>
+                          <button
+                            type="button"
+                            onClick={dismissReword}
+                            className="font-body text-xs text-ink-soft hover:text-ink shrink-0"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          {rewordVariants?.map((v, i) => (
+                            <div
+                              key={i}
+                              className="border border-line rounded-md bg-paper p-3 flex flex-col gap-2"
+                            >
+                              <p className="font-body text-sm text-ink leading-relaxed">{v}</p>
+                              <button
+                                type="button"
+                                onClick={() => acceptReword(b, v)}
+                                className="self-start font-body text-xs bg-ink text-paper rounded-full px-4 py-1.5 font-medium hover:bg-seal transition-colors"
+                              >
+                                Accept this wording
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )
           }
