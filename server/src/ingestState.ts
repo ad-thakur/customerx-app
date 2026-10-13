@@ -14,6 +14,7 @@
  *   DATABASE_URL=postgres://… node dist/ingestState.js --state MAHARASHTRA [options]
  *
  *   --state MAHARASHTRA     State Commission name, as e-Jagriti lists it, or
+ *                           (repeatable, e.g. --state DELHI --state KARNATAKA)
  *                           NCDRC for the National Commission alone
  *   --from 2020-01-01       disposal window start (default 2020-01-01)
  *   --to   2026-09-25       disposal window end (default today)
@@ -407,7 +408,9 @@ async function runTask(
 }
 
 async function main(): Promise<void> {
-  const state = arg('state', 'MAHARASHTRA')
+  // Repeatable: --state DELHI --state KARNATAKA sweeps both in one run.
+  const states = args('state').length ? args('state') : ['MAHARASHTRA']
+  const state = states.join(' + ')
   const from = arg('from', '2020-01-01')
   const to = arg('to', new Date().toISOString().slice(0, 10))
   const size = Number(arg('size', '10'))
@@ -426,7 +429,7 @@ async function main(): Promise<void> {
 
   if (loadPath) return load(loadPath)
 
-  const commissions = await discoverCommissions(state)
+  const commissions = (await Promise.all(states.map((s) => discoverCommissions(s)))).flat()
   const categories = (await fetchCaseCategories())
     .filter((c) => c.case_category_id <= categoryMax)
     .map((c) => ({ id: c.case_category_id, name: c.case_category_name_en.trim() }))
