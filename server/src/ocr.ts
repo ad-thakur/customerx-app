@@ -4,10 +4,10 @@
  * Many orders — older ones especially, and every order from some districts —
  * are uploaded to e-Jagriti as page images with no text layer, so pdf-parse
  * returns nothing. This re-fetches each such order by case number, renders its
- * pages with poppler (pdftoppm) and reads them with Tesseract (English, Marathi
- * and Hindi), then fills judgment_text in place.
+ * pages with poppler (pdftoppm) and reads them with Tesseract in English plus
+ * the state's language (see STATE_LANGS), then fills judgment_text in place.
  *
- * Needs `pdftoppm` and `tesseract` (with the eng, mar and hin language data) on
+ * Needs `pdftoppm` and `tesseract` (with the eng, mar, hin and kan language data) on
  * PATH — see nixpacks.toml for the Railway build.
  *
  * Usage (from server/, after `npm run build:ingest`):
@@ -59,8 +59,26 @@ process.on('unhandledRejection', (reason) => {
   console.warn(`  ! ignored stray PDF error: ${(reason as Error)?.message ?? reason}`)
 })
 
+/**
+ * Tesseract languages for a commission. e-Jagriti ids carry the state code in
+ * digits 3-4 (11270000 Maharashtra, 11290524 a Karnataka district), and orders
+ * are written in English or the state's language — asking Tesseract for only
+ * those is faster and more accurate than every script at once.
+ */
+const STATE_LANGS: Record<string, string> = {
+  '27': 'eng+mar+hin', // Maharashtra: Marathi, with Hindi for Devanagari variants
+  '29': 'eng+kan', // Karnataka: Kannada
+  '07': 'eng+hin', // Delhi: Hindi
+}
+const DEFAULT_LANGS = 'eng+hin' // NCDRC and anything unlisted
+
+function langsFor(commissionId: number): string {
+  if (commissionId === 11000000) return DEFAULT_LANGS
+  return STATE_LANGS[String(commissionId).slice(2, 4)] ?? DEFAULT_LANGS
+}
+
 /** Render a PDF's pages to PNG and OCR them in order. */
-async function ocrPdf(pdf: Buffer): Promise<string> {
+async function ocrPdf(pdf: Buffer, langs: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'ocr-'))
   try {
     await writeFile(join(dir, 'order.pdf'), pdf)
@@ -71,7 +89,7 @@ async function ocrPdf(pdf: Buffer): Promise<string> {
     const pages = (await readdir(dir)).filter((f) => f.endsWith('.png')).sort()
     const texts: string[] = []
     for (const page of pages) {
-      const { stdout } = await run('tesseract', [page, 'stdout', '-l', 'eng+mar+hin', '--psm', '3'], {
+      const { stdout } = await run('tesseract', [page, 'stdout', '-l', langs, '--psm', '3'], {
         cwd: dir,
         timeout: 300_000,
         maxBuffer: 32 * 1024 * 1024,
@@ -111,7 +129,7 @@ async function ocrCase(c: OcrCandidate): Promise<{ outcome: Outcome; chars: numb
   let text = await extractJudgmentText(rec)
   if (!text || text.length < MIN_TEXT) {
     if (doc.trimStart().startsWith('<')) return { outcome: 'empty', chars: 0 }
-    text = await ocrPdf(Buffer.from(doc, 'base64'))
+    text = await ocrPdf(Buffer.from(doc, 'base64'), langsFor(c.commissionId))
   }
   if (text.length < MIN_TEXT) return { outcome: 'empty', chars: text.length }
 
