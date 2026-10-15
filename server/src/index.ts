@@ -23,9 +23,11 @@ import {
   consumeLoginToken,
   destroySession,
   initAuthTables,
-  issueLoginToken,
+  CODE_TTL_MINUTES,
+  issueLoginCode,
+  verifyLoginCode,
   normaliseEmail,
-  sendLoginEmail,
+  sendLoginCode,
   userForSession,
 } from './auth.js'
 import { aiEnabled, aiStatus } from './aiSwitch.js'
@@ -137,41 +139,98 @@ function stripEvidenceData(intake: IntakeData): IntakeData {
  * Requests a sign-in link. Always answers the same way whether or not the
  * address has an account, so this cannot be used to enumerate users.
  */
-app.post('/api/auth/request-link', async (req, res) => {
+// Per-IP throttle for the sign-in routes, on top of the per-address limits in
+// auth.ts: stops one client cycling through many addresses or guessing codes.
+const authHits = new Map<string, number[]>()
+function authThrottled(req: express.Request, kind: 'send' | 'verify'): boolean {
+  const limit = kind === 'send' ? 10 : 30 // per 10 minutes
+  const key = `${kind}:${req.ip}`
+  const now = Date.now()
+  const recent = (authHits.get(key) ?? []).filter((t) => now - t < 10 * 60_000)
+  recent.push(now)
+  authHits.set(key, recent)
+  if (authHits.size > 10_000) authHits.clear() // bounded memory
+  return recent.length > limit
+}
+
+/** Emails a six-digit sign-in code. */
+app.post('/api/auth/request-code', async (req, res) => {
   try {
+    if (authThrottled(req, 'send')) {
+      res.status(429).json({ error: 'Too many requests. Please wait a few minutes and try again.' })
+      return
+    }
     const email = normaliseEmail((req.body as { email?: string }).email ?? '')
     if (!email) {
       res.status(400).json({ error: 'That doesn’t look like an email address' })
       return
     }
-    const token = await issueLoginToken(email)
-    const base = (process.env.FRONTEND_ORIGIN ?? '').split(',')[0].trim() || 'http://localhost:5173'
-    // Optional same-site path to land on after sign-in (e.g. /brand). Only a
-    // plain path is accepted, never another origin.
-    const next = String((req.body as { next?: string }).next ?? '')
-    const nextParam = /^\/[A-Za-z0-9/_-]*$/.test(next) ? `&next=${encodeURIComponent(next)}` : ''
-    const link = `${base.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}${nextParam}`
-    const sent = await sendLoginEmail(email, link)
-    // Report delivery failure honestly rather than showing "check your email"
-    // for a message that was never sent. This says nothing about whether the
-    // address has an account, so it stays non-enumerable.
-    if (!sent.delivered && !sent.devLink) {
-      res.status(502).json({
+    const issued = await issueLoginCode(email)
+    if ('retryAfterSeconds' in issued) {
+      const wait = issued.retryAfterSeconds
+      res.status(429).json({
         error:
-          sent.failure === 'not_configured'
-            ? 'Sign-in email isn’t configured yet, so we couldn’t send your link. Please try again later.'
-            : 'We couldn’t deliver your sign-in link just now. Please try again in a few minutes.',
+          wait <= 60
+            ? `A code was just sent. You can ask for another in ${wait} seconds.`
+            : `Too many codes requested for this address. Please try again in ${Math.ceil(wait / 60)} minutes.`,
+        retryAfterSeconds: wait,
       })
       return
     }
-    res.json({ ok: true, ...(sent.devLink ? { devLink: sent.devLink } : {}) })
+    const sent = await sendLoginCode(email, issued.code)
+    // Report delivery failure honestly rather than "check your email" for a
+    // message that was never sent. This says nothing about whether the address
+    // has an account, so it stays non-enumerable.
+    if (!sent.delivered && !sent.devCode) {
+      res.status(502).json({
+        error:
+          sent.failure === 'not_configured'
+            ? 'Sign-in email isn’t configured yet, so we couldn’t send your code. Please try again later.'
+            : 'We couldn’t deliver your sign-in code just now. Please try again in a few minutes.',
+      })
+      return
+    }
+    res.json({ ok: true, expiresInMinutes: CODE_TTL_MINUTES, ...(sent.devCode ? { devCode: sent.devCode } : {}) })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: 'Could not send the sign-in link' })
+    res.status(500).json({ error: 'Could not send the sign-in code' })
   }
 })
 
-/** Exchanges a magic-link token for a session. */
+/** Exchanges an email + code for a session. */
+app.post('/api/auth/verify-code', async (req, res) => {
+  try {
+    if (authThrottled(req, 'verify')) {
+      res.status(429).json({ error: 'Too many attempts. Please wait a few minutes and try again.' })
+      return
+    }
+    const email = normaliseEmail((req.body as { email?: string }).email ?? '')
+    const code = String((req.body as { code?: string }).code ?? '').replace(/\D/g, '')
+    if (!email || code.length !== 6) {
+      res.status(400).json({ error: 'Enter the 6-digit code from the email' })
+      return
+    }
+    const r = await verifyLoginCode(email, code)
+    if (!r.ok) {
+      const error = {
+        invalid:
+          r.attemptsLeft !== undefined
+            ? `That code isn’t right. ${r.attemptsLeft} ${r.attemptsLeft === 1 ? 'try' : 'tries'} left.`
+            : 'That code isn’t right. Request a new one.',
+        expired: 'That code has expired. Request a new one.',
+        too_many: 'Too many wrong tries. Request a new code.',
+      }[r.reason]
+      res.status(401).json({ error, reason: r.reason })
+      return
+    }
+    res.json({ sessionToken: r.sessionToken, user: r.user })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Could not complete sign-in' })
+  }
+})
+
+/** Exchanges a magic-link token for a session. Links are no longer sent; ones already in inboxes work until they expire. */
 app.post('/api/auth/verify', async (req, res) => {
   try {
     const token = String((req.body as { token?: string }).token ?? '')
