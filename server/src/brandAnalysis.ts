@@ -26,7 +26,8 @@
 
 import { categoriesForGrounds } from './categories.js'
 import { GROUND_LABELS } from './caseLogic.js'
-import { searchLocalPrecedents } from './precedentStore.js'
+import { searchLocalPrecedents, type CourtScope } from './precedentStore.js'
+import { classifyOutcome, isMeritsCase, type Outcome } from './outcome.js'
 import {
   brandPrecedentHistory,
   precedentTails,
@@ -42,7 +43,8 @@ import type { AiReview } from './brandReview.js'
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export type Outcome = 'consumer' | 'business' | 'settled' | 'withdrawn' | 'unknown'
+export type { Outcome } from './outcome.js'
+export { classifyOutcome } from './outcome.js'
 
 export interface ExtractedFacts {
   grounds: GroundId[]
@@ -68,6 +70,8 @@ export interface ExtractedFacts {
 export interface PrecedentView {
   caseNumber: string
   title: string
+  /** e.g. "NCDRC", "South Mumbai District Commission, MAHARASHTRA". */
+  court: string
   outcome: Outcome
   stage: string | null
   date: string | null
@@ -267,51 +271,6 @@ export function extractFactsByRules(c: Complaint): ExtractedFacts {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Outcome classification for precedents                                      */
-/* -------------------------------------------------------------------------- */
-
-const BUSINESS_NAME =
-  /\b(ltd|limited|pvt|private|bank|insurance|corporation|corp|co\.|company|authority|motors|developers|builders|airways|airlines|hospital|telecom|infratech|industries|enterprises|services|board|india)\b/i
-
-/**
- * Who won, from the consumer's side. e-Jagriti's stage name gives the
- * disposition of the proceeding, which has to be read against who brought it:
- * an original complaint (NC/CC) is brought by the consumer, but in an appeal
- * or revision (NC/FA, NC/RP) the appellant may be the business — and then
- * "dismissed" is a consumer win. Where the stage is only "disposed of", the
- * operative order at the end of the judgment is read instead.
- */
-export function classifyOutcome(
-  caseNumber: string,
-  stage: string | null,
-  complainant: string | null,
-  tail: string | null,
-): Outcome {
-  const s = (stage ?? '').toUpperCase()
-  const t = (tail ?? '').toLowerCase()
-
-  if (/WITHDRAW/.test(s) || /dismissed as withdrawn|withdrawn with liberty/.test(t)) return 'withdrawn'
-  if (/SETTLE|COMPROMISE|LOK ADALAT|MEDIAT/.test(s) || /amicabl\w+ settled|settled between the parties/.test(t))
-    return 'settled'
-
-  let disposition: 'allowed' | 'dismissed' | null = null
-  if (/ALLOW/.test(s)) disposition = 'allowed'
-  else if (/DISMISS|REJECT/.test(s)) disposition = 'dismissed'
-  else {
-    const m = t.match(/(?:complaint|appeal|petition|revision)s?\s+(?:is|are|stands?|is hereby|are hereby)\s+(?:partly |partially )?(allowed|dismissed|rejected)/g)
-    const last = m?.[m.length - 1]
-    if (last) disposition = /allowed/.test(last) ? 'allowed' : 'dismissed'
-  }
-  if (!disposition) return 'unknown'
-
-  const original = /\/CC\//i.test(caseNumber)
-  const appellantIsBusiness = !original && BUSINESS_NAME.test(complainant ?? '')
-  const consumerBrought = original || !appellantIsBusiness
-  const broughtWon = disposition === 'allowed'
-  return broughtWon === consumerBrought ? 'consumer' : 'business'
-}
-
 function toDate(d: Date | string | null): string | null {
   if (!d) return null
   return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)
@@ -330,13 +289,19 @@ function forumFor(amount: number): ComplaintAnalysis['exposure']['forum'] {
 }
 
 // Indicative ranges for planning, not quotes. Defence = the brand's own
-// counsel through to final order; costs = litigation costs commissions
-// typically award a successful complainant.
+// counsel through to final order (scaled by DEFENCE_FACTOR); costs =
+// litigation costs commissions typically award a successful complainant.
 const FORUM_COSTS = {
   'District Commission': { defence: [25_000, 75_000], costs: [5_000, 25_000], compPct: [0.1, 0.3], compMin: 5_000 },
   'State Commission': { defence: [75_000, 2_00_000], costs: [25_000, 50_000], compPct: [0.1, 0.25], compMin: 25_000 },
   'National Commission': { defence: [2_00_000, 5_00_000], costs: [50_000, 1_00_000], compPct: [0.05, 0.2], compMin: 1_00_000 },
 } as const
+
+/**
+ * Defence fees in practice come in 10–20% under the ranges above (fixed-fee
+ * panel counsel, fewer hearings at District level); 0.85 is the midpoint.
+ */
+const DEFENCE_FACTOR = 0.85
 
 /** Interest commissions commonly award on the refund, over ~2 years to order. */
 const INTEREST_FACTOR = 0.18
@@ -376,17 +341,38 @@ export async function analyseComplaint(
   // most discriminating query; widen only if it finds too little. The ground
   // categories are what keep the results on-topic either way.
   const categories = categoriesForGrounds(facts.grounds)
-  let hits: Awaited<ReturnType<typeof searchLocalPrecedents>> = []
-  try {
-    for (const q of [facts.product, `${facts.product} ${c.subject}`, `${c.subject} ${groundWords}`]) {
-      if (!q.trim()) continue
-      hits = await searchLocalPrecedents(q, 30, categories)
-      if (hits.length >= 3) break
+  const queries = [facts.product, `${facts.product} ${c.subject}`, `${c.subject} ${groundWords}`].filter((q) => q.trim())
+
+  // Comparable cases are drawn mostly from the National Commission — its
+  // judgments carry the most weight — with State and District Commission
+  // cases making up about a fifth when there are any. Only decided cases on
+  // the merits are kept: a precedent whose result can't be read is no use to
+  // the brand, and execution or miscellaneous applications aren't decisions.
+  const search = async (court: CourtScope, limit: number) => {
+    let found: Awaited<ReturnType<typeof searchLocalPrecedents>> = []
+    for (const q of queries) {
+      found = await searchLocalPrecedents(q, limit, categories, court)
+      if (found.length >= 3) break
     }
-  } catch (err) {
-    console.error('[brand] precedent search failed:', (err as Error).message)
+    return found
   }
-  const tails = await precedentTails(hits.map((h) => h.caseNumber)).catch(() => new Map<string, string>())
+  const toView = async (found: Awaited<ReturnType<typeof searchLocalPrecedents>>) => {
+    const merits = found.filter((h) => isMeritsCase(h.caseNumber))
+    const tails = await precedentTails(merits.map((h) => h.caseNumber)).catch(() => new Map<string, string>())
+    return merits
+      .map((h) => ({
+        caseNumber: h.caseNumber,
+        title: `${h.complainant ?? 'Complainant'} v. ${h.respondent ?? 'Respondent'}`,
+        court: h.commission,
+        outcome: classifyOutcome(h.caseNumber, h.outcome, h.complainant, tails.get(h.caseNumber) ?? null, h.respondent),
+        stage: h.outcome,
+        date: toDate(h.judgmentDate),
+        snippet: h.snippet.replace(/<\/?b>/g, '').slice(0, 320),
+        againstThisBrand: mentionsBrand(h.respondent) || mentionsBrand(h.complainant),
+        rank: h.rank,
+      }))
+      .filter((v) => v.outcome !== 'unknown')
+  }
 
   const aliasRe = brand.aliases
     .concat(brand.name)
@@ -395,16 +381,20 @@ export async function analyseComplaint(
   const mentionsBrand = (s: string | null) =>
     Boolean(s) && aliasRe.some((a) => s!.toLowerCase().includes(a))
 
-  const similar: (PrecedentView & { rank: number })[] = hits.map((h) => ({
-    caseNumber: h.caseNumber,
-    title: `${h.complainant ?? 'Complainant'} v. ${h.respondent ?? 'Respondent'}`,
-    outcome: classifyOutcome(h.caseNumber, h.outcome, h.complainant, tails.get(h.caseNumber) ?? null),
-    stage: h.outcome,
-    date: toDate(h.judgmentDate),
-    snippet: h.snippet.replace(/<\/?b>/g, '').slice(0, 320),
-    againstThisBrand: mentionsBrand(h.respondent) || mentionsBrand(h.complainant),
-    rank: h.rank,
-  }))
+  let national: (PrecedentView & { rank: number })[] = []
+  let local: (PrecedentView & { rank: number })[] = []
+  try {
+    const [n, l] = await Promise.all([search('ncdrc', 30), search('local', 12)])
+    ;[national, local] = await Promise.all([toView(n), toView(l)])
+  } catch (err) {
+    console.error('[brand] precedent search failed:', (err as Error).message)
+  }
+  // About 80/20: one local case for every four national ones; all local only
+  // if the National Commission has nothing comparable.
+  const nationalTake = national.slice(0, 24)
+  const localTake = local.slice(0, nationalTake.length ? Math.max(1, Math.round(nationalTake.length / 4)) : 12)
+  // NCDRC cases lead, each group closest-first.
+  const similar = [...nationalTake, ...localTake]
 
   /* ---- The brand's own record ----------------------------------------- */
   let history: BrandHistoryRow[] = []
@@ -413,10 +403,13 @@ export async function analyseComplaint(
   } catch (err) {
     console.error('[brand] history lookup failed:', (err as Error).message)
   }
-  const historyViews: PrecedentView[] = history.map((h) => ({
+  const historyViews: PrecedentView[] = history
+    .filter((h) => isMeritsCase(h.caseNumber))
+    .map((h) => ({
     caseNumber: h.caseNumber,
     title: `${h.complainant ?? 'Complainant'} v. ${h.respondent ?? 'Respondent'}`,
-    outcome: classifyOutcome(h.caseNumber, h.outcome, h.complainant, h.tail),
+    court: h.commission,
+    outcome: classifyOutcome(h.caseNumber, h.outcome, h.complainant, h.tail, h.respondent),
     stage: h.outcome,
     date: toDate(h.judgmentDate),
     snippet: '',
@@ -513,8 +506,8 @@ export async function analyseComplaint(
   const compHigh = Math.max(fc.compMin * 2, principal * fc.compPct[1])
   const awardLow = round(principal + compLow + fc.costs[0])
   const awardHigh = round(principal * (1 + INTEREST_FACTOR) + compHigh + fc.costs[1])
-  const defenceLow = fc.defence[0]
-  const defenceHigh = fc.defence[1]
+  const defenceLow = round(fc.defence[0] * DEFENCE_FACTOR)
+  const defenceHigh = round(fc.defence[1] * DEFENCE_FACTOR)
   const pWin = consumerWinPct / 100
   const expectedCostIfContested = round(pWin * ((awardLow + awardHigh) / 2) + (defenceLow + defenceHigh) / 2)
 
@@ -677,11 +670,26 @@ export async function analyseComplaint(
     closeLikelihood: pWin >= 0.6 ? 0.15 : pWin >= 0.4 ? 0.35 : 0.6,
     recommended: false,
   })
+  // The aggressive option is always on the table: deny the claim and defend
+  // it if it is filed. It lists the defences this complaint actually leaves
+  // open, so the team can see what a contest would rest on.
+  const defences = [
+    age !== null && age > 730 && 'time-barred: filed more than two years after the cause of action (s.69, CPA 2019)',
+    !facts.hasInvoice && !c.orderRef && 'no proof of purchase — consumer status not established',
+    facts.withinWarranty === false && 'outside warranty — no contractual obligation to repair or replace',
+    !facts.specificIssue && 'no specific defect or deficiency pleaded',
+    facts.demandsDisproportionate && 'compensation demanded is disproportionate to any loss',
+    facts.serviceVisits >= 1 && 'service obligations met — attended and repaired when reported',
+    'defect not proved: insist on expert evidence under s.38(2)(c) before liability is considered',
+  ].filter((d): d is string => Boolean(d))
   actions.push({
     id: 'contest',
     kind: 'contest',
-    title: 'Hold position and defend if filed',
-    detail: `Expected cost if contested: ₹${expectedCostIfContested.toLocaleString('en-IN')} (defence fees plus a ${consumerWinPct}% chance of an adverse award).`,
+    title: 'Contest firmly — deny the claim and defend if filed',
+    detail:
+      `Reject the complaint in writing, reserve all rights, and oppose it on the merits if it reaches a commission. ` +
+      `Grounds to rely on: ${defences.slice(0, 4).join('; ')}. ` +
+      `Expected cost if contested: ₹${expectedCostIfContested.toLocaleString('en-IN')} (defence fees plus a ${consumerWinPct}% chance of an adverse award).`,
     faceValue: 0,
     cost: expectedCostIfContested,
     closeLikelihood: 0,
@@ -763,13 +771,14 @@ export async function analyseComplaint(
     similar: {
       decided: decided.length,
       consumerWins: consumerWinsSimilar,
-      cases: similar.slice(0, 8).map(({ rank: _rank, ...v }) => v),
+      // Every case behind the figure above, so the counts and the list agree.
+      cases: similar.map(({ rank: _rank, ...v }) => v),
     },
     brandRecord: {
       total: historyViews.length,
       decided: histDecided.length,
       consumerWins: histWins,
-      recent: historyViews.slice(0, 6),
+      recent: historyViews.filter((h) => h.outcome !== 'unknown').slice(0, 6),
     },
     actions,
     priority,

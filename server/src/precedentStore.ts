@@ -234,10 +234,14 @@ export type PrecedentHit = Pick<
  * "No similar cases have been filed." rather than showing weak matches, since
  * an irrelevant precedent is worse than none in a legal context.
  */
+/** Which bench a precedent comes from: the National Commission, or State and District Commissions. */
+export type CourtScope = 'ncdrc' | 'local' | null
+
 export async function searchLocalPrecedents(
   query: string,
   limit = 5,
   categories: string[] | null = null,
+  court: CourtScope = null,
 ): Promise<PrecedentHit[]> {
   const terms = discriminatingTerms(query)
   if (!terms) return []
@@ -246,41 +250,51 @@ export async function searchLocalPrecedents(
   if (categories !== null && categories.length === 0) return []
   const restrict = categories !== null
 
-  const res = await pool.query(
-    `
-    -- plainto_tsquery ANDs every term ('wash' & 'machin' & 'defect'), so a
-    -- multi-word product description would match almost nothing. Swapping the
-    -- '&'s for '|'s turns it into an OR query built from the same stemmed,
-    -- stopword-free lexemes, so a judgment that matches only part of the
-    -- description still appears — just lower down. ts_rank then orders matches
-    -- from the closest product/service to the most distant. The category
-    -- restriction below is still what keeps genuinely unrelated cases out.
-    WITH q AS (
-      SELECT replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery AS tsq
+  // Ranking re-reads each matching judgment's full text, so the cost grows with
+  // the number of matches. Judgments containing every term are few and the
+  // closest; try those first, and only widen to any-term (OR) matching — far
+  // more rows, so slower — when they don't fill the list.
+  const run = async (mode: 'all' | 'any', n: number, exclude: string[]): Promise<PrecedentHit[]> => {
+    const res = await pool.query(
+      `
+      -- 'all': plainto_tsquery ANDs every stemmed term. 'any': the '&'s become
+      -- '|'s, so a judgment matching only part of the description still
+      -- appears, lower down. ts_rank orders matches closest-first; the category
+      -- restriction is what keeps genuinely unrelated cases out.
+      WITH q AS (
+        SELECT CASE WHEN $6 = 'all' THEN plainto_tsquery('english', $1)
+                    ELSE replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery END AS tsq
+      )
+      SELECT case_number AS "caseNumber",
+             commission,
+             complainant,
+             respondent,
+             outcome,
+             category,
+             judgment_date AS "judgmentDate",
+             ts_headline('english', coalesce(judgment_text, ''), q.tsq,
+                         'MaxWords=40, MinWords=20') AS snippet,
+             ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) AS rank
+      FROM precedent_cases, q
+      WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
+        AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= $2
+        -- In scope if filed under a requested category OR cross-referenced to one
+        -- (e.g. an unfair-trade case that also turns on defective goods shows up
+        -- when searching defective goods).
+        AND ($4::text[] IS NULL OR category = ANY($4::text[]) OR related_categories && $4::text[])
+        AND ($5::text IS NULL OR ($5 = 'ncdrc') = (commission = 'NCDRC'))
+        AND NOT (case_number = ANY($7::text[]))
+      ORDER BY rank DESC
+      LIMIT $3
+      `,
+      [terms, MIN_RANK, n, restrict ? categories : null, court, mode, exclude],
     )
-    SELECT case_number AS "caseNumber",
-           commission,
-           complainant,
-           respondent,
-           outcome,
-           category,
-           judgment_date AS "judgmentDate",
-           ts_headline('english', coalesce(judgment_text, ''), q.tsq,
-                       'MaxWords=40, MinWords=20') AS snippet,
-           ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) AS rank
-    FROM precedent_cases, q
-    WHERE to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
-      AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= $2
-      -- In scope if filed under a requested category OR cross-referenced to one
-      -- (e.g. an unfair-trade case that also turns on defective goods shows up
-      -- when searching defective goods).
-      AND ($4::text[] IS NULL OR category = ANY($4::text[]) OR related_categories && $4::text[])
-    ORDER BY rank DESC
-    LIMIT $3
-    `,
-    [terms, MIN_RANK, limit, restrict ? categories : null],
-  )
-  return res.rows
+    return res.rows
+  }
+
+  const hits = await run('all', limit, [])
+  if (hits.length >= limit || !terms.includes(' ')) return hits
+  return hits.concat(await run('any', limit - hits.length, hits.map((h) => h.caseNumber)))
 }
 
 /* -------------------------------------------------------------------------- */

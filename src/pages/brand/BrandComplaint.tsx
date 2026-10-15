@@ -329,6 +329,7 @@ function Analysis({
   onRerun: () => void
   busy: boolean
 }) {
+  const [showAllSimilar, setShowAllSimilar] = useState(false)
   const p = a.prediction.consumerWinPct
   const tone = p >= 60 ? 'text-seal' : p <= 40 ? 'text-verdict' : 'text-[#8a5f14]'
   const bar = p >= 60 ? 'bg-seal' : p <= 40 ? 'bg-verdict' : 'bg-marigold'
@@ -464,8 +465,9 @@ function Analysis({
             <p className="text-sm text-ink mt-1">
               Consumer succeeded in <b>{a.similar.consumerWins}</b> of {a.similar.decided} decided comparable cases.
             </p>
+            <CourtMix cases={known(a.similar.cases)} />
             <ul className="mt-3 space-y-3">
-              {a.similar.cases.slice(0, 5).map((p) => (
+              {known(a.similar.cases).slice(0, showAllSimilar ? undefined : 5).map((p) => (
                 <li key={p.caseNumber} className="text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-ink font-medium leading-snug">{p.title}</span>
@@ -473,6 +475,7 @@ function Analysis({
                   </div>
                   <p className="text-xs text-ink-soft case-number mt-0.5">
                     {p.caseNumber}
+                    {p.court && ` · ${courtLabel(p.court)}`}
                     {p.date && ` · ${p.date}`}
                     {p.againstThisBrand && <span className="text-seal"> · involves {brandName}</span>}
                   </p>
@@ -480,12 +483,21 @@ function Analysis({
                 </li>
               ))}
             </ul>
+            {known(a.similar.cases).length > 5 && (
+              <button
+                type="button"
+                onClick={() => setShowAllSimilar((v) => !v)}
+                className="mt-3 text-xs text-seal font-medium hover:underline"
+              >
+                {showAllSimilar ? 'Show fewer' : `Show all ${known(a.similar.cases).length} cases`}
+              </button>
+            )}
           </>
         )}
       </section>
 
       <section className="border border-line rounded-lg bg-white/80 p-5">
-        <p className="case-number text-[11px] text-ink-soft">{brandName.toUpperCase()} BEFORE THE NCDRC</p>
+        <p className="case-number text-[11px] text-ink-soft">{brandName.toUpperCase()} BEFORE THE COMMISSIONS</p>
         {a.brandRecord.total === 0 ? (
           <p className="text-sm text-ink-soft mt-2">
             No judgments found under {brandName}’s registered names. Add legal-entity names under Channels → Brand
@@ -504,7 +516,7 @@ function Analysis({
               .
             </p>
             <ul className="mt-2 space-y-1">
-              {a.brandRecord.recent.slice(0, 4).map((p) => (
+              {known(a.brandRecord.recent).slice(0, 4).map((p) => (
                 <li key={p.caseNumber} className="text-xs flex justify-between gap-2">
                   <span className="text-ink-soft truncate">
                     <span className="case-number">{p.caseNumber}</span> {p.date && `· ${p.date}`}
@@ -647,7 +659,7 @@ function PrecedentReview({
       <p className="case-number text-[11px] text-ink-soft mt-5 mb-2">PRECEDENTS RELIED ON</p>
       {r.precedents && r.precedents.length > 0 ? (
         <ol className="space-y-3">
-          {r.precedents.map((p, i) => (
+          {known(r.precedents).map((p, i) => (
             <li key={p.caseNumber} className="border-l-2 border-line pl-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm text-ink font-medium leading-snug">
@@ -657,6 +669,7 @@ function PrecedentReview({
               </div>
               <p className="text-xs text-ink-soft case-number mt-0.5">
                 {p.caseNumber}
+                {p.court && ` · ${courtLabel(p.court)}`}
                 {p.date && ` · ${p.date}`}
                 {p.title.toLowerCase().includes(brandName.toLowerCase()) && <span className="text-seal"> · involves {brandName}</span>}
               </p>
@@ -686,9 +699,35 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   )
 }
 
+/**
+ * Only precedents with a readable result are shown. Analyses saved before
+ * outcomes were read from the operative order may still hold 'unknown' ones;
+ * re-running the analysis replaces them.
+ */
+function known<T extends { outcome: Outcome }>(list: T[]): T[] {
+  return list.filter((p) => p.outcome !== 'unknown')
+}
+
+/** "NCDRC" stays; "Pune District Commission, MAHARASHTRA" → "Pune District Commission". */
+function courtLabel(court: string): string {
+  return court === 'NCDRC' ? 'NCDRC' : court.split(',')[0].replace(/^MAHARASHTRA State Commission — /, '').trim()
+}
+
+function CourtMix({ cases }: { cases: { court?: string }[] }) {
+  const withCourt = cases.filter((c) => c.court)
+  if (withCourt.length === 0) return null
+  const national = withCourt.filter((c) => c.court === 'NCDRC').length
+  const local = withCourt.length - national
+  return (
+    <p className="text-xs text-ink-soft mt-0.5">
+      {national} from the NCDRC{local > 0 ? ` · ${local} from State and District Commissions` : ''}
+    </p>
+  )
+}
+
 const OUTCOME: Record<Outcome, { label: string; cls: string }> = {
-  consumer: { label: 'CONSUMER WON', cls: 'text-seal border-seal/40 bg-seal/5' },
-  business: { label: 'BRAND WON', cls: 'text-verdict border-verdict/40 bg-verdict/10' },
+  consumer: { label: 'CONSUMER PREVAILED', cls: 'text-seal border-seal/40 bg-seal/5' },
+  business: { label: 'BRAND PREVAILED', cls: 'text-verdict border-verdict/40 bg-verdict/10' },
   settled: { label: 'SETTLED', cls: 'text-ink border-line bg-white' },
   withdrawn: { label: 'WITHDRAWN', cls: 'text-ink-soft border-line bg-white' },
   unknown: { label: 'OUTCOME UNCLEAR', cls: 'text-ink-soft border-line bg-white' },
