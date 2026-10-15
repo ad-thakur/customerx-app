@@ -57,16 +57,30 @@ async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
 /* -------------------------------------------------------------------------- */
 
-/** Emails a sign-in link. `devLink` comes back only when the server echoes it. */
-export function requestSignInLink(
+/** Emails a six-digit sign-in code. `devCode` comes back only when the server echoes it. */
+export function requestSignInCode(
   email: string,
-  next?: string,
-): Promise<{ ok: true; devLink?: string }> {
-  return api('/api/auth/request-link', { method: 'POST', body: JSON.stringify({ email, next }) })
+): Promise<{ ok: true; expiresInMinutes: number; devCode?: string }> {
+  return api('/api/auth/request-code', { method: 'POST', body: JSON.stringify({ email }) })
 }
 
 /**
- * Completes sign-in from the emailed link, then attaches every case this
+ * Signs in with the emailed code, then attaches every case this browser
+ * already holds to the account (see claimLocalCases).
+ */
+export async function signInWithCode(email: string, code: string): Promise<User> {
+  const { sessionToken, user } = await api<{ sessionToken: string; user: User }>(
+    '/api/auth/verify-code',
+    { method: 'POST', body: JSON.stringify({ email, code }) },
+  )
+  setSession(sessionToken)
+  await claimLocalCases()
+  return user
+}
+
+/**
+ * Completes sign-in from an emailed link (links are no longer sent; ones
+ * already in inboxes keep working until they expire), then attaches every case this
  * browser already holds to the new account, so the dashboard is populated
  * with the cases the person filed before they had one.
  */
