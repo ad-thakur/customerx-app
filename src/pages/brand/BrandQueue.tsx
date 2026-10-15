@@ -216,8 +216,8 @@ export default function BrandQueue() {
         <div className="border border-line rounded-lg bg-white/70 p-10 text-center">
           <p className="font-display text-xl text-ink mb-2">No complaints yet.</p>
           <p className="text-ink-soft mb-6 max-w-lg mx-auto">
-            Connect your website form or support inbox under Channels, add one by hand, or load a set of sample
-            complaints to see how the analysis works.
+            Complaints from your website, support email and complaint page will appear here as they arrive. You can
+            also add one by hand, or load a set of sample complaints to see how the analysis works.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <button

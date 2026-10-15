@@ -126,7 +126,7 @@ export default function BrandShell() {
                       `px-2 py-1 rounded ${isActive ? 'text-marigold' : 'text-paper/80 hover:text-paper'}`
                     }
                   >
-                    Channels
+                    Settings
                   </NavLink>
                   <NavLink
                     to="/brand/usage"

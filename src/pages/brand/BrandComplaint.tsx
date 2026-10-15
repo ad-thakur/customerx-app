@@ -500,8 +500,8 @@ function Analysis({
         <p className="case-number text-[11px] text-ink-soft">{brandName.toUpperCase()} BEFORE THE COMMISSIONS</p>
         {a.brandRecord.total === 0 ? (
           <p className="text-sm text-ink-soft mt-2">
-            No judgments found under {brandName}’s registered names. Add legal-entity names under Channels → Brand
-            profile.
+            No court cases found under {brandName}’s names. Add your company’s legal names under Settings → Brand
+            details.
           </p>
         ) : (
           <>
