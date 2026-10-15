@@ -207,7 +207,7 @@ async function withReviewSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 async function attachReview(complaint: Complaint, brand: Brand, analysis: ComplaintAnalysis, usageId: number) {
   const meter = newMeter()
-  const review = await withReviewSlot(() => reviewPrecedents(complaint, brand, analysis.facts, meter))
+  const review = await withReviewSlot(() => reviewPrecedents(complaint, brand, analysis.facts, meter, analysis.similar.cases))
   await addUsageTokens(usageId, meter.input, meter.output).catch(() => {})
   // Attach to whatever analysis is current — a statistical re-run may have
   // replaced the one this started from, carrying the pending review over.

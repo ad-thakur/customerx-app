@@ -20,20 +20,23 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { categoriesForGrounds } from './categories.js'
 import { GROUND_LABELS } from './caseLogic.js'
-import { classifyOutcome, type ExtractedFacts, type Outcome } from './brandAnalysis.js'
+import type { ExtractedFacts, PrecedentView } from './brandAnalysis.js'
+import { classifyOutcome, isMeritsCase, type Outcome } from './outcome.js'
 import { readJudgment, searchCorpus, type Brand, type Complaint } from './brandStore.js'
 import type { Meter } from './brandAi.js'
 import type { GroundId } from './types.js'
 import { aiEnabled } from './aiSwitch.js'
 
 const MODEL = process.env.BRAND_AI_MODEL ?? 'claude-opus-5-5'
-const MAX_TURNS = 12
+const MAX_TURNS = 8
 
 export type ReviewOutcome = 'consumer_likely' | 'partly_consumer' | 'brand_likely' | 'uncertain'
 
 export interface ReviewPrecedent {
   caseNumber: string
   title: string
+  /** e.g. "NCDRC", "Pune District Commission, MAHARASHTRA". */
+  court?: string
   date: string | null
   outcome: Outcome
   relevance: string
@@ -69,6 +72,16 @@ How to work:
 - Be calibrated. If the comparable cases are thin or mixed, say so and use "uncertain" or a low confidence.
 - You are not giving legal advice and must not state an outcome as certain. Never invent cases, facts or amounts — cite only cases your searches returned.
 
+Which courts to rely on: the National Commission (NCDRC) carries the most weight. Base the review mainly on NCDRC judgments — about 80–90% of the precedents you cite — and use State or District Commission judgments for the remaining 10–20%, only where they are genuinely close. If there are no comparable State or District cases, cite only NCDRC ones. search_precedents returns mostly NCDRC cases unless you ask for court "local".
+
+Reading each precedent's outcome, from the consumer's side:
+- "consumer": the commission awarded the consumer anything — a refund, replacement, repair, compensation or costs, in full or in part — or dismissed the business's appeal against such an award.
+- "brand": the consumer's complaint was dismissed or rejected (including on limitation or maintainability), or the business's appeal was allowed.
+- "settled" or "withdrawn" where the order says so.
+Every precedent you cite must have one of these outcomes, read from its operative part. Do not cite a case whose result you could not determine.
+
+Work efficiently: you already have a shortlist of comparable cases with their outcomes. Call several tools at once in a single turn where you can (e.g. read three judgments together), and submit within about four turns.
+
 When done, call submit_review exactly once. Cite 3–6 precedents if you found that many relevant ones; fewer is fine if that is all that is genuinely comparable.`
 
 const TOOLS: Anthropic.Tool[] = [
@@ -86,6 +99,11 @@ const TOOLS: Anthropic.Tool[] = [
           description: 'Restrict to the e-Jagriti categories for these grounds. Omit to search all categories.',
         },
         party: { type: 'string', description: 'Only cases where this company name appears as a party, e.g. the brand.' },
+        court: {
+          type: 'string',
+          enum: ['ncdrc', 'local', 'all'],
+          description: 'ncdrc = National Commission only; local = State and District Commissions only; all (default) = mostly NCDRC with about a fifth from State/District.',
+        },
         limit: { type: 'integer', minimum: 1, maximum: 15 },
       },
       required: ['query'],
@@ -126,8 +144,13 @@ const TOOLS: Anthropic.Tool[] = [
               case_number: { type: 'string' },
               relevance: { type: 'string', description: 'One sentence: why this case is comparable, and any important difference.' },
               relief: { type: ['string', 'null'], description: 'What was awarded, if stated in the judgment.' },
+              outcome: {
+                type: 'string',
+                enum: ['consumer', 'brand', 'settled', 'withdrawn'],
+                description: 'Who prevailed, read from the operative part. Any relief awarded to the consumer = consumer.',
+              },
             },
-            required: ['case_number', 'relevance'],
+            required: ['case_number', 'relevance', 'outcome'],
           },
         },
       },
@@ -147,7 +170,7 @@ interface SubmitInput {
   suggestion: string
   likely_relief?: string | null
   key_factors: string[]
-  precedents: { case_number: string; relevance: string; relief?: string | null }[]
+  precedents: { case_number: string; relevance: string; relief?: string | null; outcome?: string }[]
 }
 
 export async function reviewPrecedents(
@@ -155,6 +178,7 @@ export async function reviewPrecedents(
   brand: Brand,
   facts: ExtractedFacts,
   meter?: Meter,
+  shortlist: PrecedentView[] = [],
 ): Promise<AiReview> {
   const now = () => new Date().toISOString()
   if (!aiEnabled()) return { status: 'disabled', generatedAt: now() }
@@ -170,21 +194,34 @@ export async function reviewPrecedents(
       const grounds = (Array.isArray(input.grounds) ? input.grounds : []).filter((g): g is GroundId =>
         GROUND_IDS.includes(g as GroundId),
       )
-      const hits = await searchCorpus({
+      const base = {
         query: String(input.query ?? '').slice(0, 300),
         categories: grounds.length ? categoriesForGrounds(grounds) : null,
         party: typeof input.party === 'string' ? input.party.slice(0, 120) : null,
-        limit: Math.min(15, Math.max(1, Number(input.limit) || 8)),
-      })
+      }
+      const limit = Math.min(15, Math.max(1, Number(input.limit) || 8))
+      const court = input.court === 'ncdrc' || input.court === 'local' ? input.court : 'all'
+      // Default: NCDRC-led, with about one State/District case per four national ones.
+      const found =
+        court === 'all'
+          ? (
+              await Promise.all([
+                searchCorpus({ ...base, limit, court: 'ncdrc' }),
+                searchCorpus({ ...base, limit: Math.max(1, Math.round(limit / 4)), court: 'local' }),
+              ])
+            ).flat()
+          : await searchCorpus({ ...base, limit, court })
+      const hits = found.filter((h) => isMeritsCase(h.caseNumber))
       hits.forEach((h) => seen.add(h.caseNumber))
       if (hits.length === 0) return 'No matching judgments. Try fewer or different words, or drop the grounds filter.'
       return JSON.stringify(
         hits.map((h) => ({
           case_number: h.caseNumber,
+          court: h.commission,
           parties: `${h.complainant ?? '?'} v. ${h.respondent ?? '?'}`,
           category: h.category,
           stage: h.stage,
-          outcome_for_consumer: classifyOutcome(h.caseNumber, h.stage, h.complainant, h.tail),
+          outcome_for_consumer: classifyOutcome(h.caseNumber, h.stage, h.complainant, h.tail, h.respondent),
           date: toDate(h.judgmentDate),
           snippet: h.snippet.replace(/<\/?b>/g, '').slice(0, 400),
         })),
@@ -231,10 +268,27 @@ export async function reviewPrecedents(
     },
   }
 
+  // A head start: the comparable cases the statistical analysis already found,
+  // with their outcomes, so the agent reads and refines rather than searching
+  // from nothing.
+  shortlist.forEach((p) => seen.add(p.caseNumber))
+  const start = shortlist.slice(0, 15).map((p) => ({
+    case_number: p.caseNumber,
+    court: p.court,
+    parties: p.title,
+    outcome_for_consumer: p.outcome,
+    date: p.date,
+    snippet: p.snippet.slice(0, 240),
+  }))
+
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',
-      content: `Complaint to review:\n${JSON.stringify(brief, null, 2)}\n\nResearch comparable judgments and submit your review.`,
+      content:
+        `Complaint to review:\n${JSON.stringify(brief, null, 2)}\n\n` +
+        (start.length
+          ? `Comparable cases already found (mostly NCDRC):\n${JSON.stringify(start, null, 2)}\n\nRead the closest of these, search further only where they are thin, and submit your review.`
+          : 'Research comparable judgments and submit your review.'),
     },
   ]
 
@@ -270,14 +324,16 @@ export async function reviewPrecedents(
         continue
       }
 
-      const results: Anthropic.ToolResultBlockParam[] = []
-      for (const u of uses) {
-        try {
-          results.push({ type: 'tool_result', tool_use_id: u.id, content: await runTool(u.name, u.input as Record<string, unknown>) })
-        } catch (err) {
-          results.push({ type: 'tool_result', tool_use_id: u.id, content: `Tool error: ${(err as Error).message}`, is_error: true })
-        }
-      }
+      // The agent's tool calls in one turn are independent: run them together.
+      const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
+        uses.map(async (u): Promise<Anthropic.ToolResultBlockParam> => {
+          try {
+            return { type: 'tool_result', tool_use_id: u.id, content: await runTool(u.name, u.input as Record<string, unknown>) }
+          } catch (err) {
+            return { type: 'tool_result', tool_use_id: u.id, content: `Tool error: ${(err as Error).message}`, is_error: true }
+          }
+        }),
+      )
       // All results for the turn go back in one user message.
       messages.push({ role: 'user', content: results })
     }
@@ -290,21 +346,36 @@ export async function reviewPrecedents(
   async function finalise(out: SubmitInput): Promise<AiReview> {
     // Only cases the tools actually returned — the model may not introduce sources.
     const cited = (Array.isArray(out.precedents) ? out.precedents : [])
-      .filter((p) => p && typeof p.case_number === 'string' && seen.has(p.case_number))
-      .slice(0, 6)
-    const precedents: ReviewPrecedent[] = []
-    for (const p of cited) {
-      const j = await readJudgment(p.case_number)
-      if (!j) continue
-      precedents.push({
+      .filter((p) => p && typeof p.case_number === 'string' && seen.has(p.case_number) && isMeritsCase(p.case_number))
+      .slice(0, 8)
+    const modelOutcome: Record<string, Outcome> = { consumer: 'consumer', brand: 'business', settled: 'settled', withdrawn: 'withdrawn' }
+    const read = await Promise.all(cited.map((p) => readJudgment(p.case_number)))
+    const all: ReviewPrecedent[] = []
+    cited.forEach((p, i) => {
+      const j = read[i]
+      if (!j) return
+      // The rules read the operative order first; where they can't, the
+      // agent's own reading of it (it has just read the judgment) is used. A
+      // precedent with no determinable result is not shown at all.
+      const ruled = classifyOutcome(j.caseNumber, j.stage, j.complainant, j.operative, j.respondent)
+      const outcome = ruled !== 'unknown' ? ruled : (modelOutcome[String(p.outcome)] ?? 'unknown')
+      if (outcome === 'unknown') return
+      all.push({
         caseNumber: j.caseNumber,
         title: `${j.complainant ?? 'Complainant'} v. ${j.respondent ?? 'Respondent'}`,
+        court: j.commission,
         date: toDate(j.judgmentDate),
-        outcome: classifyOutcome(j.caseNumber, j.stage, j.complainant, j.operative),
+        outcome,
         relevance: String(p.relevance ?? '').slice(0, 400),
         relief: typeof p.relief === 'string' ? p.relief.slice(0, 300) : null,
       })
-    }
+    })
+    // Keep the mix NCDRC-led: State/District precedents at most a fifth of
+    // those shown (at least one allowed), or all of them if no NCDRC case fits.
+    const nationalP = all.filter((p) => p.court === 'NCDRC')
+    const localP = all.filter((p) => p.court !== 'NCDRC')
+    const localCap = nationalP.length ? Math.max(1, Math.floor((nationalP.length + 1) / 4)) : localP.length
+    const precedents = [...nationalP, ...localP.slice(0, localCap)].slice(0, 6)
     const outcomes: ReviewOutcome[] = ['consumer_likely', 'partly_consumer', 'brand_likely', 'uncertain']
     return {
       status: 'done',

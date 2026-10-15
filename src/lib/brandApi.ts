@@ -71,6 +71,8 @@ export interface ThreadEntry {
 export interface PrecedentView {
   caseNumber: string
   title: string
+  /** Which commission decided it, e.g. "NCDRC". Absent on analyses saved before it was recorded. */
+  court?: string
   outcome: Outcome
   stage: string | null
   date: string | null
@@ -102,6 +104,7 @@ export interface AiReview {
   precedents?: {
     caseNumber: string
     title: string
+    court?: string
     date: string | null
     outcome: Outcome
     relevance: string

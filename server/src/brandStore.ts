@@ -494,12 +494,13 @@ export async function patchComplaint(
 
 export interface BrandHistoryRow {
   caseNumber: string
+  commission: string
   complainant: string | null
   respondent: string | null
   outcome: string | null
   category: string
   judgmentDate: Date | string | null
-  /** Last ~1,500 chars of the judgment — where the operative order sits. */
+  /** Last ~4,000 chars of the judgment — where the operative order sits. */
   tail: string | null
 }
 
@@ -518,9 +519,9 @@ export async function brandPrecedentHistory(aliases: string[], limit = 400): Pro
     .map((a) => `%${a.replace(/[%_\\]/g, (m) => `\\${m}`)}%`)
   if (patterns.length === 0) return []
   const res = await pool.query<BrandHistoryRow>(
-    `SELECT case_number AS "caseNumber", complainant, respondent, outcome, category,
+    `SELECT case_number AS "caseNumber", commission, complainant, respondent, outcome, category,
             judgment_date AS "judgmentDate",
-            right(coalesce(judgment_text, ''), 1500) AS tail
+            right(coalesce(judgment_text, ''), 4000) AS tail
        FROM precedent_cases
       WHERE respondent ILIKE ANY($1::text[]) OR complainant ILIKE ANY($1::text[])
       ORDER BY judgment_date DESC NULLS LAST
@@ -534,7 +535,7 @@ export async function brandPrecedentHistory(aliases: string[], limit = 400): Pro
 export async function precedentTails(caseNumbers: string[]): Promise<Map<string, string>> {
   if (caseNumbers.length === 0) return new Map()
   const res = await pool.query<{ case_number: string; tail: string }>(
-    `SELECT case_number, right(coalesce(judgment_text, ''), 1500) AS tail
+    `SELECT case_number, right(coalesce(judgment_text, ''), 4000) AS tail
        FROM precedent_cases WHERE case_number = ANY($1::text[])`,
     [caseNumbers],
   )
@@ -547,6 +548,7 @@ export async function precedentTails(caseNumbers: string[]): Promise<Map<string,
 
 export interface CorpusHit {
   caseNumber: string
+  commission: string
   complainant: string | null
   respondent: string | null
   category: string
@@ -560,31 +562,41 @@ export interface CorpusHit {
  * Full-text search for the review agent. Looser than searchLocalPrecedents:
  * the agent reads and judges each result itself, so a lower rank floor and an
  * optional party filter (e.g. only cases against this brand) are useful here.
- * Categories still bound the search when given.
+ * Categories still bound the search when given; `court` restricts it to the
+ * NCDRC or to State and District Commissions.
+ *
+ * Like searchLocalPrecedents, it tries judgments containing every term first
+ * (few, close, fast to rank) and widens to any-term matching only to fill up.
  */
 export async function searchCorpus(opts: {
   query: string
   categories: string[] | null
   party: string | null
   limit: number
+  court?: 'ncdrc' | 'local' | null
 }): Promise<CorpusHit[]> {
   const terms = discriminatingTerms(opts.query)
   const party = opts.party && opts.party.trim().length >= 4 ? `%${opts.party.trim().replace(/[%_\\]/g, (m) => `\\${m}`)}%` : null
   if (!terms && !party) return []
-  const res = await pool.query<CorpusHit>(
-    `
+  const run = async (mode: 'all' | 'any', n: number, exclude: string[]) =>
+    (
+      await pool.query<CorpusHit>(
+        `
     WITH q AS (
       SELECT CASE WHEN $1 = '' THEN NULL
+                  WHEN $5 = 'all' THEN plainto_tsquery('english', $1)
                   ELSE replace(plainto_tsquery('english', $1)::text, ' & ', ' | ')::tsquery END AS tsq
     )
-    SELECT case_number AS "caseNumber", complainant, respondent, category, outcome AS stage,
+    SELECT case_number AS "caseNumber", commission, complainant, respondent, category, outcome AS stage,
            judgment_date AS "judgmentDate",
            CASE WHEN q.tsq IS NULL THEN left(coalesce(judgment_text, ''), 300)
                 ELSE ts_headline('english', coalesce(judgment_text, ''), q.tsq, 'MaxWords=45, MinWords=20') END AS snippet,
-           right(coalesce(judgment_text, ''), 1500) AS tail
+           right(coalesce(judgment_text, ''), 4000) AS tail
       FROM precedent_cases, q
      WHERE ($2::text[] IS NULL OR category = ANY($2::text[]) OR related_categories && $2::text[])
        AND ($3::text IS NULL OR respondent ILIKE $3 OR complainant ILIKE $3)
+       AND ($6::text IS NULL OR ($6 = 'ncdrc') = (commission = 'NCDRC'))
+       AND NOT (case_number = ANY($7::text[]))
        AND (q.tsq IS NULL OR (
              to_tsvector('english', coalesce(judgment_text, '')) @@ q.tsq
          AND ts_rank(to_tsvector('english', coalesce(judgment_text, '')), q.tsq, 32) >= 0.02))
@@ -593,9 +605,20 @@ export async function searchCorpus(opts: {
               judgment_date DESC NULLS LAST
      LIMIT $4
     `,
-    [terms, opts.categories && opts.categories.length ? opts.categories : null, party, opts.limit],
-  )
-  return res.rows
+        [
+          terms,
+          opts.categories && opts.categories.length ? opts.categories : null,
+          party,
+          n,
+          mode,
+          opts.court ?? null,
+          exclude,
+        ],
+      )
+    ).rows
+  const hits = await run('all', opts.limit, [])
+  if (hits.length >= opts.limit || !terms.includes(' ')) return hits
+  return hits.concat(await run('any', opts.limit - hits.length, hits.map((h) => h.caseNumber)))
 }
 
 /** One judgment: parties, dates, and the opening and operative parts of the text. */
