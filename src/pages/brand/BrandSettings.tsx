@@ -45,6 +45,7 @@ export default function BrandSettings() {
       </Card>
 
       <BrandProfile key={brand.id} onSaved={reload} />
+      <SettlementSettings key={`settle-${brand.id}`} onSaved={reload} />
       <Team />
       {isStaff && <StaffSetup />}
     </div>
@@ -126,7 +127,6 @@ function BrandProfile({ onSaved }: { onSaved: () => Promise<void> }) {
   const { brand } = useBrand()
   const [name, setName] = useState(brand.name)
   const [aliases, setAliases] = useState(brand.aliases.join(', '))
-  const [margin, setMargin] = useState(String(Math.round(brand.grossMargin * 100)))
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -137,7 +137,6 @@ function BrandProfile({ onSaved }: { onSaved: () => Promise<void> }) {
     updateBrand(brand.id, {
       name: name.trim(),
       aliases: aliases.split(',').map((a) => a.trim()).filter(Boolean),
-      grossMargin: Math.min(90, Math.max(0, Number(margin) || 0)) / 100,
     })
       .then(onSaved)
       .then(() => setState('saved'))
@@ -163,11 +162,58 @@ function BrandProfile({ onSaved }: { onSaved: () => Promise<void> }) {
             them to find past court cases involving you.
           </span>
         </label>
+        {error && <p className="text-sm text-seal">{error}</p>}
+        <button className="bg-ink text-paper rounded-full px-5 py-2 text-sm font-medium hover:bg-seal transition-colors">
+          {state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : 'Save'}
+        </button>
+        <p className="text-xs text-ink-soft">Existing complaints keep their analysis until you re-run it.</p>
+      </form>
+    </Card>
+  )
+}
+
+/** How the brand settles claims. Meant for whoever signs off on settlements
+ *  (typically legal or the head of customer service); everything optional. */
+function SettlementSettings({ onSaved }: { onSaved: () => Promise<void> }) {
+  const { brand } = useBrand()
+  const [margin, setMargin] = useState(brand.grossMargin === null ? '' : String(Math.round(brand.grossMargin * 100)))
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  const save = (e: React.FormEvent) => {
+    e.preventDefault()
+    setState('saving')
+    setError(null)
+    const pct = margin.trim() === '' ? null : Math.min(90, Math.max(0, Number(margin) || 0))
+    updateBrand(brand.id, { grossMargin: pct === null ? null : pct / 100 })
+      .then(onSaved)
+      .then(() => setState('saved'))
+      .catch((err: Error) => {
+        setError(err.message)
+        setState('idle')
+      })
+  }
+
+  return (
+    <Card title="Settlement settings" tag="SETTLEMENTS">
+      <p className="text-sm text-ink-soft mb-4 leading-relaxed">
+        For whoever approves settlements — usually your legal head or head of customer service.
+      </p>
+      <form onSubmit={save} className="space-y-4">
         <label className="block">
-          <span className="text-sm text-ink">Typical profit margin (%)</span>
-          <input type="number" min={0} max={90} value={margin} onChange={(e) => setMargin(e.target.value)} className={`${input} w-32`} />
+          <span className="text-sm text-ink">Gross margin (%) — optional</span>
+          <input
+            type="number"
+            min={0}
+            max={90}
+            value={margin}
+            onChange={(e) => setMargin(e.target.value)}
+            placeholder="Not given"
+            className="mt-1 border border-line rounded px-3 py-2 bg-white text-sm w-32 block"
+          />
           <span className="text-xs text-ink-soft">
-            Roughly what you earn on a sale. Used to cost replacements and vouchers at what they actually cost you.
+            Lets us cost replacements and vouchers at what they actually cost you. Leave blank and we cost them at full
+            price. Only your team sees this.
           </span>
         </label>
         {error && <p className="text-sm text-seal">{error}</p>}

@@ -69,8 +69,10 @@ export interface Brand {
   slug: string
   /** Names this brand appears under as a respondent, for precedent history. */
   aliases: string[]
-  /** Gross margin, 0–1. Turns a gift card's face value into its real cost. */
-  grossMargin: number
+  /** Gross margin, 0–1. Turns a gift card's face value into its real cost.
+   *  Optional: null until someone entering the brand's settlement settings
+   *  chooses to give it, and then goods are costed at face value. */
+  grossMargin: number | null
   /** Public key for the website form; safe to embed in a page. */
   intakeKey: string
   /** Social listening add-on (X and Reddit mentions), billed separately. */
@@ -121,11 +123,14 @@ export async function initBrandTables(): Promise<void> {
       name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
       aliases TEXT[] NOT NULL DEFAULT '{}',
-      gross_margin REAL NOT NULL DEFAULT 0.4,
+      gross_margin REAL,
       intake_key TEXT NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `)
+  // Margin is no longer asked for at sign-up; it is an optional settlement
+  // setting. Existing brands keep the value they entered.
+  await pool.query(`ALTER TABLE brands ALTER COLUMN gross_margin DROP NOT NULL, ALTER COLUMN gross_margin DROP DEFAULT`)
   await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS social_enabled BOOLEAN NOT NULL DEFAULT false`)
   await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS billing_model TEXT NOT NULL DEFAULT 'subscription'`)
   await pool.query(`ALTER TABLE brands ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'trial'`)
@@ -195,7 +200,7 @@ interface BrandRow {
   name: string
   slug: string
   aliases: string[]
-  gross_margin: number
+  gross_margin: number | null
   intake_key: string
   social_enabled: boolean
   billing_model: BillingModel
@@ -211,7 +216,7 @@ function toBrand(r: BrandRow): Brand {
     name: r.name,
     slug: r.slug,
     aliases: r.aliases,
-    grossMargin: Number(r.gross_margin),
+    grossMargin: r.gross_margin === null ? null : Number(r.gross_margin),
     intakeKey: r.intake_key,
     socialEnabled: r.social_enabled,
     billingModel: r.billing_model,
@@ -235,7 +240,6 @@ export function slugify(name: string): string {
 export async function createBrand(input: {
   name: string
   aliases: string[]
-  grossMargin: number
   ownerEmail: string
 }): Promise<Brand> {
   const id = crypto.randomUUID()
@@ -245,9 +249,9 @@ export async function createBrand(input: {
   if (taken.rows.length) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`
   const intakeKey = `pk_${crypto.randomBytes(12).toString('hex')}`
   const res = await pool.query<BrandRow>(
-    `INSERT INTO brands (id, name, slug, aliases, gross_margin, intake_key)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [id, input.name, slug, input.aliases, input.grossMargin, intakeKey],
+    `INSERT INTO brands (id, name, slug, aliases, intake_key)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [id, input.name, slug, input.aliases, intakeKey],
   )
   await pool.query(`INSERT INTO brand_members (brand_id, email) VALUES ($1, $2)`, [
     id,
@@ -258,16 +262,24 @@ export async function createBrand(input: {
 
 export async function updateBrand(
   id: string,
-  patch: { name?: string; aliases?: string[]; grossMargin?: number; socialEnabled?: boolean },
+  /** grossMargin: undefined leaves it, null clears it. */
+  patch: { name?: string; aliases?: string[]; grossMargin?: number | null; socialEnabled?: boolean },
 ): Promise<Brand | null> {
   const res = await pool.query<BrandRow>(
     `UPDATE brands SET
        name = COALESCE($2, name),
        aliases = COALESCE($3, aliases),
-       gross_margin = COALESCE($4, gross_margin),
+       gross_margin = CASE WHEN $6 THEN $4::real ELSE gross_margin END,
        social_enabled = COALESCE($5, social_enabled)
      WHERE id = $1 RETURNING *`,
-    [id, patch.name ?? null, patch.aliases ?? null, patch.grossMargin ?? null, patch.socialEnabled ?? null],
+    [
+      id,
+      patch.name ?? null,
+      patch.aliases ?? null,
+      patch.grossMargin ?? null,
+      patch.socialEnabled ?? null,
+      patch.grossMargin !== undefined,
+    ],
   )
   return res.rows.length ? toBrand(res.rows[0]) : null
 }

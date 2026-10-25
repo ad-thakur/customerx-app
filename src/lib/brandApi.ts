@@ -40,7 +40,8 @@ export interface Brand {
   name: string
   slug: string
   aliases: string[]
-  grossMargin: number
+  /** Optional; null when the brand hasn't given one. */
+  grossMargin: number | null
   intakeKey: string
   socialEnabled: boolean
   billingModel: BillingModel
@@ -248,7 +249,7 @@ export interface TrackView {
 
 export const myBrands = () => api<{ brands: Brand[] }>('/api/brand/me').then((r) => r.brands)
 
-export const createBrand = (input: { name: string; aliases: string[]; grossMargin: number }) =>
+export const createBrand = (input: { name: string; aliases: string[] }) =>
   api<Brand>('/api/brand', { method: 'POST', body: JSON.stringify(input) })
 
 export const updateBrand = (id: string, patch: Partial<Pick<Brand, 'name' | 'aliases' | 'grossMargin'>>) =>
