@@ -275,11 +275,9 @@ brandRouter.post('/api/brand', async (req, res) => {
       .map((a) => str(a, 80))
       .filter(Boolean)
       .slice(0, 12)
-    const margin = Number(body.grossMargin)
     const brand = await createBrand({
       name,
       aliases,
-      grossMargin: Number.isFinite(margin) && margin >= 0 && margin < 1 ? margin : 0.4,
       ownerEmail: user.email,
     })
     res.status(201).json(brand)
@@ -300,7 +298,12 @@ brandRouter.patch('/api/brand/:brandId', async (req, res) => {
       aliases: Array.isArray(body.aliases)
         ? body.aliases.map((a) => str(a, 80)).filter(Boolean).slice(0, 12)
         : undefined,
-      grossMargin: Number.isFinite(margin) && margin >= 0 && margin < 1 ? margin : undefined,
+      grossMargin:
+        body.grossMargin === null
+          ? null
+          : Number.isFinite(margin) && margin >= 0 && margin < 1
+            ? margin
+            : undefined,
       socialEnabled: typeof body.socialEnabled === 'boolean' ? body.socialEnabled : undefined,
     })
     res.json(brand)

@@ -11,8 +11,9 @@
 //   2. Is it frivolous?
 //      — a checklist of concrete signals, not a verdict.
 //   3. What does it cost to fight it, versus to settle it?
-//      — exposure model by forum, using the brand's own gross margin to cost
-//        replacements and gift cards at what they really cost the brand.
+//      — exposure model by forum, using the brand's gross margin (optional;
+//        face value without it) to cost replacements and gift cards at what
+//        they really cost the brand.
 //   4. So what should we do?
 //      — ranked actions, each with a cost, including goodwill (gift cards,
 //        promo items) where that is the cheapest way to close it.
@@ -512,7 +513,10 @@ export async function analyseComplaint(
   const expectedCostIfContested = round(pWin * ((awardLow + awardHigh) / 2) + (defenceLow + defenceHigh) / 2)
 
   /* ---- Actions --------------------------------------------------------- */
-  const margin = Math.min(0.9, Math.max(0, brand.grossMargin))
+  // Margin is optional. Without it, goods and vouchers are costed at face
+  // value — the cautious reading — rather than at a margin we guessed.
+  const marginKnown = brand.grossMargin !== null
+  const margin = Math.min(0.9, Math.max(0, brand.grossMargin ?? 0))
   const costOfGoods = (face: number) => round(face * (1 - margin))
   const goodwill = round(Math.min(5_000, Math.max(500, principal * 0.1)))
   const actions: ActionOption[] = []
@@ -538,7 +542,9 @@ export async function analyseComplaint(
         id: 'replacement_goodwill',
         kind: 'replacement',
         title: `Replace the product + ₹${goodwill.toLocaleString('en-IN')} gift card`,
-        detail: `Replacement at cost (${Math.round((1 - margin) * 100)}% of price) plus a goodwill gift card redeemable on your store.`,
+        detail: marginKnown
+          ? `Replacement at cost (${Math.round((1 - margin) * 100)}% of price) plus a goodwill gift card redeemable on your store.`
+          : 'Replacement plus a goodwill gift card redeemable on your store. Costed at full price — add your margin in Settings for the real cost.',
         faceValue: principal + goodwill,
         cost: costOfGoods(principal) + costOfGoods(goodwill),
         closeLikelihood: 0.85,
@@ -619,7 +625,9 @@ export async function analyseComplaint(
       id: 'gift_card',
       kind: 'gift_card',
       title: `Store credit of ₹${round(principal * 1.15).toLocaleString('en-IN')} (115%)`,
-      detail: `Worth more to the consumer than a refund, and costs you about ₹${costOfGoods(principal * 1.15).toLocaleString('en-IN')} at your margin. Keeps the customer.`,
+      detail: marginKnown
+        ? `Worth more to the consumer than a refund, and costs you about ₹${costOfGoods(principal * 1.15).toLocaleString('en-IN')} at your margin. Keeps the customer.`
+        : 'Worth more to the consumer than a refund, and costs you less than its face value — add your margin in Settings to see by how much. Keeps the customer.',
       faceValue: round(principal * 1.15),
       cost: costOfGoods(principal * 1.15),
       closeLikelihood: 0.55,
@@ -702,7 +710,8 @@ export async function analyseComplaint(
   // times the cost of contesting, plus the customer's future margin, which an
   // unresolved complaint usually loses.
   const fileRate = Math.min(0.6, (facts.threatensLegal ? 0.3 : 0.1) + 0.3 * pWin)
-  const lostCustomer = round(Math.max(1_000, principal) * margin)
+  // A typical 40% where the brand hasn't said.
+  const lostCustomer = round(Math.max(1_000, principal) * (marginKnown ? margin : 0.4))
   const unresolvedCost = fileRate * expectedCostIfContested + lostCustomer
   const expectedTotal = (o: ActionOption) =>
     o.kind === 'contest'

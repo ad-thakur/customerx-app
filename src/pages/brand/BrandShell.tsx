@@ -206,7 +206,6 @@ function Onboarding({ onCreated }: { onCreated: (b: Brand) => void }) {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [aliases, setAliases] = useState('')
-  const [margin, setMargin] = useState('40')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -220,7 +219,6 @@ function Onboarding({ onCreated }: { onCreated: (b: Brand) => void }) {
         .split(',')
         .map((a) => a.trim())
         .filter(Boolean),
-      grossMargin: Math.min(90, Math.max(0, Number(margin) || 40)) / 100,
     })
       .then((b) => {
         onCreated(b)
@@ -257,20 +255,6 @@ function Onboarding({ onCreated }: { onCreated: (b: Brand) => void }) {
             className="mt-1 w-full border border-line rounded px-3 py-2 bg-white"
           />
           <span className="text-xs text-ink-soft">Comma-separated. How you appear as a respondent in judgments.</span>
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium text-ink">Gross margin (%)</span>
-          <input
-            type="number"
-            min={0}
-            max={90}
-            value={margin}
-            onChange={(e) => setMargin(e.target.value)}
-            className="mt-1 w-32 border border-line rounded px-3 py-2 bg-white"
-          />
-          <span className="block text-xs text-ink-soft">
-            Used to cost replacements and gift cards at what they really cost you, not their face value.
-          </span>
         </label>
         {error && <p className="text-sm text-seal">{error}</p>}
         <button
